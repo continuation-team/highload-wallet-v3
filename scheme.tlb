@@ -1,0 +1,15 @@
+// short hashmap declaration
+_ {n:#} {X:Type} (Maybe ^Cell) = HashmapE n X;
+//
+
+
+storage$_ public_key:bits256 last_cleaned:uint64 
+          old_queries:(HashmapE 14 ^Cell) queries:(HashmapE 14 ^Cell)
+          = Storage;
+
+_ created_at:uint40 shift:uint14 bit_number:uint10 = QueryId;
+
+_ {n:#} QueryId actions:^(OutList n) { n <= 255 } = MsgInner n;
+
+msg_body$_ {n:#} sign:bits512 ^(MsgInner n) = ExtInMsgBody n;
+
