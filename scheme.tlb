@@ -1,5 +1,6 @@
 // short hashmap declaration
-_ {n:#} {X:Type} (Maybe ^Cell) = HashmapE n X;
+_$0 {n:#} {X:Type} = HashmapE n X;
+_$1 {n:#} {X:Type} ^Cell = HashmapE n X;
 //
 
 
