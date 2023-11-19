@@ -1,0 +1,93 @@
+/*
+  highload-wallet-v3 – open-source optimized highload wallet for tvm-based blockchains
+
+  Copyright (C) 2023 Continuation Team
+
+  This file is part of highload-wallet-v3.
+
+  highload-wallet-v3 is free software: you can redistribute it and/or modify it under the terms
+  of the GNU Lesser General Public License as published by the Free Software Foundation,
+  either version 3 of the License, or (at your option) any later version.
+
+  highload-wallet-v3 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+  See the GNU Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public License along with highload-wallet-v3.
+  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+"Asm.fif" include
+
+<{
+    SETCP0 DUP IFNOTRET                                        // msg_body selector
+    DUP ISPOS                                                  // msg_body selector f
+    IFJMP:<{
+        // this is a get-methods field
+    }>
+    // fail unless recv_external (from wallet-v3)
+    INC 32 THROWIF                                             // msg_body
+
+    // parse msg_body
+    LDREF OVER HASHCU                                          // msg_inner sign hash
+
+    // parse storage
+    c4 PUSH CTOS                                               // msg_inner sign hash c4
+    256 LDU LDDICT LDDICT 64 PLDU                              // msg_inner sign hash pubkey old_queries queries last_cleaned 
+
+    // check and shift query dicts
+    DUP NOW -64 ADDCONST LESS                                  // msg_inner sign hash pubkey old_queries queries last_cleaned f
+    IF:<{                                                      // msg_inner sign hash pubkey old_queries queries last_cleaned
+        1 2 BLKDROP2                                           // msg_inner sign hash pubkey queries->old_queries last_cleaned 
+        NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey old_queries f 
+        IF:<{                                                  // msg_inner sign hash pubkey old_queries
+            DROP                                               // msg_inner sign hash pubkey 
+            NULL                                               // msg_inner sign hash pubkey old_queries
+        }>
+        NULL NOW                                               // msg_inner sign hash pubkey old_queries queries last_cleaned
+    }>
+    
+    // check sign
+    s6 s4 s5 XCHG3                                             // old_queries last_cleaned queries pubkey msg_inner hash sign
+    s3 PUSH                                                    // old_queries last_cleaned queries pubkey msg_inner hash sign pubkey
+    CHKSIGNU 33 THROWIFNOT                                     // old_queries last_cleaned queries pubkey msg_inner
+    
+    // parse msg_inner
+    CTOS LDREF 14 LDU 10 LDU 40 LDU ENDS                       // old_queries last_cleaned queries pubkey actions shift bit_number created_at
+    
+    // check created_lt
+    NOW OVER OVER -128 ADDCONST MAX MIN EQUAL 34 THROWIFNOT    // old_queries last_cleaned queries pubkey actions shift bit_number
+
+    // check query_id in old_queries
+    s1 s6 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey actions shift bit_number (value_cell -1 or 0)
+    IF:<{                                                      // old_queries last_cleaned queries pubkey actions shift bit_number value_cell
+        CTOS OVER DEC SDSKIPFIRST 1 PLDI 35 THROWIF            // old_queries last_cleaned queries pubkey actions shift bit_number
+    }>
+
+    // check query_id in queries
+    // and write, if not found
+    s1 s4 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey actions shift bit_number (value_cell -1 or 0)
+    IF:<{                                                      // old_queries last_cleaned queries pubkey actions shift bit_number value_cell
+        CTOS SWAP DEC ZERO SPLIT                               // old_queries last_cleaned queries pubkey actions shift value' value''
+        b{0} SDBEGINSQ 36 THROWIFNOT                           // old_queries last_cleaned queries pubkey actions shift value' value''
+        SWAP                                                   // old_queries last_cleaned queries pubkey actions shift value'' value'
+        NEWC STSLICE STONE STSLICE                             // old_queries last_cleaned queries pubkey actions shift value_builder
+    }>ELSE<{                                                   // old_queries last_cleaned queries pubkey actions shift bit_number
+        NEWC OVER DEC STZEROES STONE                           // old_queries last_cleaned queries pubkey actions shift bit_number value_builder
+        10 PUSHPOW2DEC ROT SUB STZEROES                        // old_queries last_cleaned queries pubkey actions shift value_builder
+    }>
+
+    ACCEPT
+    
+    ENDC                                                       // old_queries last_cleaned queries pubkey actions shift value_cell
+    s0 s1 s4 XCHG3                                             // old_queries last_cleaned actions pubkey value_cell shift queries
+    14 INT DICTUSETREF                                         // old_queries last_cleaned actions pubkey queries
+    
+    // build storage
+    s0 s4 s4 XCHG3                                             // actions last_cleaned queries old_queries pubkey
+    NEWC 256 STU STDICT STDICT 64 STU ENDC                     // actions c4
+    c4 POP                                                     // actions
+
+    // write actions
+    c5 POP
+}>c
