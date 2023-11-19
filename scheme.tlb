@@ -18,11 +18,11 @@
 */
 
 
-storage$_ public_key:bits256 last_cleaned:uint64 
-          old_queries:(HashmapE 14 ^Cell) queries:(HashmapE 14 ^Cell)
+storage$_ public_key:bits256 old_queries:(HashmapE 14 ^Cell) 
+          queries:(HashmapE 14 ^Cell) last_cleaned:uint64
           = Storage;
 
-_ created_at:uint40 shift:uint14 bit_number:uint10 = QueryId;
+_ shift:uint14 bit_number:(## 10) { bit_number > 0 } created_at:uint40 = QueryId;
 
 _ {n:#} QueryId actions:^(OutList n) { n <= 255 } = MsgInner n;
 
