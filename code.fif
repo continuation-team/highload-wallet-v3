@@ -55,7 +55,7 @@
     // parse msg_inner
     CTOS LDREF 14 LDU 10 LDU 40 LDU ENDS                       // old_queries last_cleaned queries pubkey actions shift bit_number created_at
     
-    // check created_lt
+    // check created_at
     NOW OVER OVER -128 ADDCONST MAX MIN EQUAL 34 THROWIFNOT    // old_queries last_cleaned queries pubkey actions shift bit_number
 
     // check query_id in old_queries
