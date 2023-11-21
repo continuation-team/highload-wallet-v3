@@ -138,12 +138,44 @@ describe('HighloadWalletV3', () => {
         await expect(highloadWalletV3.sendExternalMessage(
             keyPair.secretKey,
             {
-                createdAt: 1000,
+                createdAt: 1050,
                 shift: 0,
                 bitNumber: 1,
                 actions: []
             }
         )).rejects.toThrow();
+    });
+
+    it('should be cleared queries hashmaps', async () => {
+        const testResult1 = await highloadWalletV3.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                shift: 0,
+                bitNumber: 1,
+                actions: []
+            }
+        );
+        expect(testResult1.transactions).toHaveTransaction({
+            to: highloadWalletV3.address,
+            success: true
+        });
+
+        blockchain.now = 1000 + 130;
+
+        const testResult2 = await highloadWalletV3.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1100,
+                shift: 0,
+                bitNumber: 1,
+                actions: []
+            }
+        );
+        expect(testResult2.transactions).toHaveTransaction({
+            to: highloadWalletV3.address,
+            success: true
+        });
     });
 
     it('should send ordinary transaction', async () => {
