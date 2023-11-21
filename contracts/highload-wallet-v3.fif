@@ -19,11 +19,19 @@
 
 "Asm.fif" include
 
+{ $>B crc16  0xffff and 0x10000 or } : $>method_id
+
 <{
-    SETCP0 DUP IFNOTRET                                        // msg_body selector
-    DUP ISPOS                                                  // msg_body selector f
-    IFJMP:<{
-        // this is a get-methods field
+    SETCP0 DUP IFNOTRET                                        // (msg_body or *stack) selector
+    DUP ISPOS                                                  // (msg_body or *stack) selector f
+    IFJMP:<{                                                   // *stack selector
+        "get_public_key" $>method_id EQINT                     // *stack f
+        IFJMP:<{                                               // *stack
+            c4 PUSH CTOS 256 PLDU                              // *stack pubkey
+            // return pubkey
+            1 RETARGS
+        }>
+        0x7ff THROW
     }>
     // fail unless recv_external (from wallet-v3)
     INC 32 THROWIF                                             // msg_body
@@ -32,8 +40,8 @@
     LDREF OVER HASHCU                                          // msg_inner sign hash
 
     // parse storage
-    c4 PUSH CTOS                                               // msg_inner sign hash c4
-    256 LDU LDDICT LDDICT 64 PLDU                              // msg_inner sign hash pubkey old_queries queries last_cleaned 
+    c4 PUSH                                                    // msg_inner sign hash c4
+    CTOS 256 LDU LDDICT LDDICT 64 PLDU                         // msg_inner sign hash pubkey old_queries queries last_cleaned 
 
     // check and shift query dicts
     DUP NOW -64 ADDCONST LESS                                  // msg_inner sign hash pubkey old_queries queries last_cleaned f
