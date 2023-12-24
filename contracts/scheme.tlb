@@ -24,7 +24,7 @@ storage$_ public_key:bits256 old_queries:(HashmapE 14 ^Cell)
 
 _ shift:uint14 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } created_at:uint40 = QueryId;
 
-_ {n:#} QueryId actions:^(OutList n) { n <= 255 } = MsgInner n;
+_ {n:#} QueryId subwallet_id:uint32 actions:^(OutList n) { n <= 255 } = MsgInner n;
 
 msg_body$_ {n:#} sign:bits512 ^(MsgInner n) = ExtInMsgBody n;
 

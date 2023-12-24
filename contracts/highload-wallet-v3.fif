@@ -19,7 +19,7 @@
 
 "Asm.fif" include
 
-{ $>B crc16  0xffff and 0x10000 or } : $>method_id
+{ $>B crc16 0xffff and 0x10000 or } : $>method_id
 
 <{
     SETCP0 DUP IFNOTRET                                        // (msg_body or *stack) selector
@@ -41,59 +41,63 @@
 
     // parse storage
     c4 PUSH                                                    // msg_inner sign hash c4
-    CTOS 256 LDU LDDICT LDDICT 40 PLDU                         // msg_inner sign hash pubkey old_queries queries last_cleaned
+    CTOS 256 LDU 32 LDU LDDICT LDDICT 40 PLDU                  // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
 
     // check and shift query dicts
-    DUP NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey old_queries queries last_cleaned f
-    IF:<{                                                      // msg_inner sign hash pubkey old_queries queries last_cleaned
-        1 2 BLKDROP2                                           // msg_inner sign hash pubkey queries->old_queries last_cleaned 
-        NOW -256 ADDCONST LESS                                 // msg_inner sign hash pubkey old_queries f
-        IF:<{                                                  // msg_inner sign hash pubkey old_queries
-            DROP                                               // msg_inner sign hash pubkey 
-            NULL                                               // msg_inner sign hash pubkey old_queries
+    DUP NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned f
+    IF:<{                                                      // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
+        1 2 BLKDROP2                                           // msg_inner sign hash pubkey subwallet_id queries->old_queries last_cleaned
+        NOW -256 ADDCONST LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries f
+        IF:<{                                                  // msg_inner sign hash pubkey subwallet_id old_queries
+            DROP                                               // msg_inner sign hash pubkey subwallet_id
+            NULL                                               // msg_inner sign hash pubkey subwallet_id old_queries
         }>
-        NULL NOW                                               // msg_inner sign hash pubkey old_queries queries last_cleaned
+        NULL NOW                                               // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
     }>
     
     // check sign
-    s6 s4 s5 XCHG3                                             // old_queries last_cleaned queries pubkey msg_inner hash sign
-    s3 PUSH                                                    // old_queries last_cleaned queries pubkey msg_inner hash sign pubkey
-    CHKSIGNU 33 THROWIFNOT                                     // old_queries last_cleaned queries pubkey msg_inner
+    s7 s5 s6 XCHG3                                             // old_queries last_cleaned queries pubkey subwallet_id msg_inner hash sign
+    s4 PUSH                                                    // old_queries last_cleaned queries pubkey subwallet_id msg_inner hash sign pubkey
+    CHKSIGNU 33 THROWIFNOT                                     // old_queries last_cleaned queries pubkey subwallet_id msg_inner
     
     // parse msg_inner
-    CTOS LDREF 14 LDU 10 LDU 40 LDU ENDS                       // old_queries last_cleaned queries pubkey actions shift bit_number created_at
-    
+    CTOS LDREF 14 LDU 10 LDU 40 LDU 32 LDU ENDS                // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number created_at msg_subwallet_id
+
+    // check subwallet_id
+    s5 PUSH EQUAL 34 THROWIFNOT                                // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number created_at
+
     // check created_at
-    NOW 2DUP -128 ADDCONST MAX MIN EQUAL 34 THROWIFNOT         // old_queries last_cleaned queries pubkey actions shift bit_number
+    NOW 2DUP -128 ADDCONST MAX MIN EQUAL 34 THROWIFNOT         // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
 
     // check query_id in old_queries
-    s1 s6 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey actions shift bit_number (value_cell -1 or 0)
-    IF:<{                                                      // old_queries last_cleaned queries pubkey actions shift bit_number value_cell
-        CTOS OVER SDSKIPFIRST SDFIRST 35 THROWIF               // old_queries last_cleaned queries pubkey actions shift bit_number
+    s1 s7 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number (value_cell -1 or 0)
+    IF:<{                                                      // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number value_cell
+        CTOS OVER SDSKIPFIRST SDFIRST 35 THROWIF               // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
     }>
 
     // check query_id in queries
     // and write, if not found
-    s1 s4 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey actions shift bit_number (value_cell -1 or 0)
-    IF:<{                                                      // old_queries last_cleaned queries pubkey actions shift bit_number value_cell
-        CTOS SWAP LDSLICEX                                     // old_queries last_cleaned queries pubkey actions shift value' value''
-        b{0} SDBEGINS                                          // old_queries last_cleaned queries pubkey actions shift value' value''
-        SWAP                                                   // old_queries last_cleaned queries pubkey actions shift value'' value'
-        NEWC STSLICE STONE STSLICE                             // old_queries last_cleaned queries pubkey actions shift value_builder
-    }>ELSE<{                                                   // old_queries last_cleaned queries pubkey actions shift bit_number
-        NEWC OVER STZEROES STONE                               // old_queries last_cleaned queries pubkey actions shift bit_number value_builder
-        10 PUSHPOW2DEC ROT SUB DEC STZEROES                    // old_queries last_cleaned queries pubkey actions shift value_builder
+    s1 s5 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number (value_cell -1 or 0)
+    IF:<{                                                      // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number value_cell
+        CTOS SWAP LDSLICEX                                     // old_queries last_cleaned queries pubkey subwallet_id actions shift value' value''
+        b{0} SDBEGINS                                          // old_queries last_cleaned queries pubkey subwallet_id actions shift value' value''
+        SWAP                                                   // old_queries last_cleaned queries pubkey subwallet_id actions shift value'' value'
+        NEWC STSLICE STONE STSLICE                             // old_queries last_cleaned queries pubkey subwallet_id actions shift value_builder
+    }>ELSE<{                                                   // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
+        NEWC OVER STZEROES STONE                               // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number value_builder
+        10 PUSHPOW2DEC ROT SUB DEC STZEROES                    // old_queries last_cleaned queries pubkey subwallet_id actions shift value_builder
     }>
 
     ACCEPT
     
-    ENDC                                                       // old_queries last_cleaned queries pubkey actions shift value_cell
-    s0 s1 s4 XCHG3                                             // old_queries last_cleaned actions pubkey value_cell shift queries
-    14 INT DICTUSETREF                                         // old_queries last_cleaned actions pubkey queries
+    ENDC                                                       // old_queries last_cleaned queries pubkey subwallet_id actions shift value_cell
+    s0 s1 s5 XCHG3                                             // old_queries last_cleaned actions pubkey subwallet_id value_cell shift queries
+    14 INT DICTUSETREF                                         // old_queries last_cleaned actions pubkey subwallet_id queries
     
     // build storage
-    s0 s4 s4 XCHG3                                             // actions last_cleaned queries old_queries pubkey
-    NEWC 256 STU STDICT STDICT 40 STU ENDC                     // actions c4
+    s3 s5 XCHG                                                 // actions last_cleaned old_queries pubkey subwallet_id queries
+    s3 s1 s3 XCHG3                                             // actions last_cleaned queries old_queries subwallet_id pubkey
+    NEWC 256 STU 32 STU STDICT STDICT 40 STU ENDC              // actions c4
     c4 POP                                                     // actions
 
     // write actions

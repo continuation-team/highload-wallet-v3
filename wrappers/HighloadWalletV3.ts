@@ -9,7 +9,7 @@ import {
     Sender,
     SendMode,
     storeOutList
-} from 'ton-core';
+} from '@ton/core';
 import { base64 as CodeBase64 } from '../build/HighloadWalletV3.compiled.json';
 import { sign } from "ton-crypto";
 
@@ -23,7 +23,8 @@ export type HighloadWalletV3Config = {
 export function highloadWalletV3ConfigToCell(config: HighloadWalletV3Config): Cell {
     return beginCell()
           .storeBuffer(config.publicKey)
-          .storeUint(0, 1 + 1 + 64)
+          .storeUint(239, 32)
+          .storeUint(0, 1 + 1 + 40)
           .endCell();
 }
 
@@ -76,6 +77,7 @@ export class HighloadWalletV3 implements Contract {
                             .storeUint(opts.shift, 14)
                             .storeUint(opts.bitNumber, 10)
                             .storeUint(opts.createdAt, 40)
+                            .storeUint(239, 32)
                             .storeRef(actionsCell)
                             .endCell();
 
