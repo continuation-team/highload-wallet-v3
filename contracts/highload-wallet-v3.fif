@@ -37,17 +37,17 @@
     INC 32 THROWIF                                             // msg_body
 
     // parse msg_body
-    LDREF OVER HASHCU                                          // msg_inner sign hash
+    LDREF 9 PUSHPOW2 LDSLICEX ENDS OVER HASHCU                 // msg_inner sign hash
 
     // parse storage
     c4 PUSH                                                    // msg_inner sign hash c4
-    CTOS 256 LDU LDDICT LDDICT 64 PLDU                         // msg_inner sign hash pubkey old_queries queries last_cleaned 
+    CTOS 256 LDU LDDICT LDDICT 40 PLDU                         // msg_inner sign hash pubkey old_queries queries last_cleaned
 
     // check and shift query dicts
-    DUP NOW -64 ADDCONST LESS                                  // msg_inner sign hash pubkey old_queries queries last_cleaned f
+    DUP NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey old_queries queries last_cleaned f
     IF:<{                                                      // msg_inner sign hash pubkey old_queries queries last_cleaned
         1 2 BLKDROP2                                           // msg_inner sign hash pubkey queries->old_queries last_cleaned 
-        NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey old_queries f 
+        NOW -256 ADDCONST LESS                                 // msg_inner sign hash pubkey old_queries f
         IF:<{                                                  // msg_inner sign hash pubkey old_queries
             DROP                                               // msg_inner sign hash pubkey 
             NULL                                               // msg_inner sign hash pubkey old_queries
@@ -69,20 +69,20 @@
     // check query_id in old_queries
     s1 s6 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey actions shift bit_number (value_cell -1 or 0)
     IF:<{                                                      // old_queries last_cleaned queries pubkey actions shift bit_number value_cell
-        CTOS OVER DEC SDSKIPFIRST 1 PLDI 35 THROWIF            // old_queries last_cleaned queries pubkey actions shift bit_number
+        CTOS OVER SDSKIPFIRST SDFIRST 35 THROWIF               // old_queries last_cleaned queries pubkey actions shift bit_number
     }>
 
     // check query_id in queries
     // and write, if not found
     s1 s4 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey actions shift bit_number (value_cell -1 or 0)
     IF:<{                                                      // old_queries last_cleaned queries pubkey actions shift bit_number value_cell
-        CTOS SWAP DEC ZERO SPLIT                               // old_queries last_cleaned queries pubkey actions shift value' value''
-        b{0} SDBEGINSQ 36 THROWIFNOT                           // old_queries last_cleaned queries pubkey actions shift value' value''
+        CTOS SWAP LDSLICEX                                     // old_queries last_cleaned queries pubkey actions shift value' value''
+        b{0} SDBEGINS                                          // old_queries last_cleaned queries pubkey actions shift value' value''
         SWAP                                                   // old_queries last_cleaned queries pubkey actions shift value'' value'
         NEWC STSLICE STONE STSLICE                             // old_queries last_cleaned queries pubkey actions shift value_builder
     }>ELSE<{                                                   // old_queries last_cleaned queries pubkey actions shift bit_number
-        NEWC OVER DEC STZEROES STONE                           // old_queries last_cleaned queries pubkey actions shift bit_number value_builder
-        10 PUSHPOW2DEC ROT SUB STZEROES                        // old_queries last_cleaned queries pubkey actions shift value_builder
+        NEWC OVER STZEROES STONE                               // old_queries last_cleaned queries pubkey actions shift bit_number value_builder
+        10 PUSHPOW2DEC ROT SUB DEC STZEROES                    // old_queries last_cleaned queries pubkey actions shift value_builder
     }>
 
     ACCEPT
@@ -93,7 +93,7 @@
     
     // build storage
     s0 s4 s4 XCHG3                                             // actions last_cleaned queries old_queries pubkey
-    NEWC 256 STU STDICT STDICT 64 STU ENDC                     // actions c4
+    NEWC 256 STU STDICT STDICT 40 STU ENDC                     // actions c4
     c4 POP                                                     // actions
 
     // write actions

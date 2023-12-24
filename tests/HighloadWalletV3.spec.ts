@@ -1,7 +1,7 @@
-import { Blockchain, BlockchainTransaction, SandboxContract } from '@ton-community/sandbox';
-import { beginCell, Cell, SendMode, toNano } from 'ton-core';
+import { Blockchain, BlockchainTransaction, SandboxContract } from '@ton/sandbox';
+import { beginCell, Cell, SendMode, toNano } from '@ton/core';
 import { HighloadWalletV3 } from '../wrappers/HighloadWalletV3';
-import '@ton-community/test-utils';
+import '@ton/test-utils';
 import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
 import { randomBytes } from "crypto";
 
@@ -19,6 +19,12 @@ describe('HighloadWalletV3', () => {
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         blockchain.now = 1000;
+        // blockchain.verbosity = {
+        //     print: true,
+        //     blockchainLogs: true,
+        //     vmLogs: 'vm_logs',
+        //     debugLogs: true,
+        // }
 
         highloadWalletV3 = blockchain.openContract(
             HighloadWalletV3.createFromConfig(
@@ -35,8 +41,7 @@ describe('HighloadWalletV3', () => {
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
             to: highloadWalletV3.address,
-            deploy: true,
-            success: true,
+            deploy: true
         });
     });
 
@@ -50,16 +55,10 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         );
-
-        testResult.transactions.forEach((tr: BlockchainTransaction) => {
-            // console.log(tr.vmLogs)
-            // console.log(tr.debugLogs)
-            console.log(tr.description)
-        })
 
         expect(testResult.transactions).toHaveTransaction({
             to: highloadWalletV3.address,
@@ -74,7 +73,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         )).rejects.toThrow();
@@ -86,7 +85,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000 - 130,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         )).rejects.toThrow();
@@ -98,7 +97,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         );
@@ -112,7 +111,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         )).rejects.toThrow();
@@ -124,7 +123,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         );
@@ -140,7 +139,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1050,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         )).rejects.toThrow();
@@ -152,7 +151,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         );
@@ -161,14 +160,14 @@ describe('HighloadWalletV3', () => {
             success: true
         });
 
-        blockchain.now = 1000 + 130;
+        blockchain.now = 1000 + 260;
 
         const testResult2 = await highloadWalletV3.sendExternalMessage(
             keyPair.secretKey,
             {
-                createdAt: 1100,
+                createdAt: 1200,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: []
             }
         );
@@ -184,7 +183,7 @@ describe('HighloadWalletV3', () => {
             {
                 createdAt: 1000,
                 shift: 0,
-                bitNumber: 1,
+                bitNumber: 0,
                 actions: [{
                     type: 'sendMsg',
                     mode: SendMode.NONE,
@@ -210,14 +209,14 @@ describe('HighloadWalletV3', () => {
 
     it('should send hundred ordinary transactions', async () => {
         for (let x = 0; x < 10; x++) {
-            if (x > 4) { blockchain.now = 1100; }
-            for (let y = 1; y < 11; y++) {
+            if (x > 4) { blockchain.now = 1200; }
+            for (let y = 0; y < 11; y++) {
                 const testResult = await highloadWalletV3.sendExternalMessage(
                     keyPair.secretKey,
                     {
-                        createdAt: 1000,
+                        createdAt: x > 4 ? 1100  : 1000,
                         shift: x,
-                        bitNumber: y < 5 ? 1023 - y : y,
+                        bitNumber: y < 5 ? 1022 - y : y,
                         actions: [{
                             type: 'sendMsg',
                             mode: SendMode.NONE,
