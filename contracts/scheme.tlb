@@ -19,7 +19,7 @@
 
 
 storage$_ public_key:bits256 old_queries:(HashmapE 14 ^Cell) 
-          queries:(HashmapE 14 ^Cell) last_cleaned:uint64
+          queries:(HashmapE 14 ^Cell) last_cleaned:uint40
           = Storage;
 
 _ shift:uint14 bit_number:(## 10) { bit_number >= 0 } { bit_number < 1023 } created_at:uint40 = QueryId;
