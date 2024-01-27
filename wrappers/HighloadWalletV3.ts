@@ -10,10 +10,10 @@ import {
     SendMode,
     storeOutList
 } from '@ton/core';
-import { base64 as CodeBase64 } from '../build/HighloadWalletV3.compiled.json';
+import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
 import { sign } from "ton-crypto";
 
-export const HighloadWalletV3Code = Cell.fromBase64(CodeBase64);
+export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
 export type HighloadWalletV3Config = {
     publicKey: Buffer
