@@ -25,10 +25,18 @@
     SETCP0 DUP IFNOTRET                                        // (msg_body or *stack) selector
     DUP ISPOS                                                  // (msg_body or *stack) selector f
     IFJMP:<{                                                   // *stack selector
-        "get_public_key" $>method_id EQINT                     // *stack f
-        IFJMP:<{                                               // *stack
-            c4 PUSH CTOS 256 PLDU                              // *stack pubkey
+        DUP                                                    // *stack selector selector
+        "get_public_key" $>method_id EQINT                     // *stack selector f
+        IFJMP:<{                                               // *stack selector
+            c4 PUSH CTOS 256 PLDU                              // *stack selector pubkey
             // return pubkey
+            1 RETARGS
+        }>
+        "get_subwallet_id" $>method_id EQINT                   // *stack f
+        IFJMP:<{                                               // *stack
+            c4 PUSH CTOS 256 LDU                               // *stack pubkey
+            32 PLDU                                            // *stack pubkey subwallet_id
+            // return subwallet_id
             1 RETARGS
         }>
         0x7ff THROW
