@@ -55,7 +55,7 @@
     DUP NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned f
     IF:<{                                                      // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
         1 2 BLKDROP2                                           // msg_inner sign hash pubkey subwallet_id queries->old_queries last_cleaned
-        NOW -256 ADDCONST LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries f
+        NOW 8 PUSHPOW2 SUB LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries f
         IF:<{                                                  // msg_inner sign hash pubkey subwallet_id old_queries
             DROP                                               // msg_inner sign hash pubkey subwallet_id
             NULL                                               // msg_inner sign hash pubkey subwallet_id old_queries
@@ -75,12 +75,12 @@
     s5 PUSH EQUAL 34 THROWIFNOT                                // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number created_at
 
     // check created_at
-    NOW 2DUP -128 ADDCONST MAX MIN EQUAL 34 THROWIFNOT         // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
+    NOW 2DUP -128 ADDCONST MAX MIN EQUAL 35 THROWIFNOT         // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
 
     // check query_id in old_queries
     s1 s7 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number (value_cell -1 or 0)
     IF:<{                                                      // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number value_cell
-        CTOS OVER SDSKIPFIRST SDFIRST 35 THROWIF               // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
+        CTOS OVER SDSKIPFIRST SDFIRST 36 THROWIF               // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
     }>
 
     // check query_id in queries
