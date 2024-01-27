@@ -20,6 +20,7 @@
 #include "imports/stdlib.fc";
 
 
+builder store_one(builder b) asm "STONE";
 builder store_zeroes(builder b, int x) asm "STZEROES";
 () set_c5(cell actions) impure asm "c5 POP";
 
@@ -75,9 +76,9 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
     slice vs = value.begin_parse();
     (slice vs_tail, slice vs_head) = vs.load_bits(bit_number);
     throw_if(36, vs_tail~load_int(1));
-    new_value = begin_cell().store_slice(vs_head).store_uint(1, 1).store_slice(vs_tail);
+    new_value = begin_cell().store_slice(vs_head).store_one().store_slice(vs_tail);
   } else {
-    new_value = begin_cell().store_zeroes(bit_number).store_uint(1, 1).store_zeroes(1023 - bit_number - 1);
+    new_value = begin_cell().store_zeroes(bit_number).store_one().store_zeroes(1023 - bit_number - 1);
   }
 
   accept_message();
