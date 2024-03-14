@@ -18,6 +18,7 @@
 */
 
 "Asm.fif" include
+"auto/timeout.fif" include
 
 { $>B crc16 0xffff and 0x10000 or } : $>method_id
 
@@ -39,6 +40,7 @@
             // return subwallet_id
             1 RETARGS
         }>
+        // TODO: get_timeout, get_last_cleaned, processed?
         0x7ff THROW
     }>
     // fail unless recv_external (from wallet-v3)
@@ -52,10 +54,10 @@
     CTOS 256 LDU 32 LDU LDDICT LDDICT 40 PLDU                  // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
 
     // check and shift query dicts
-    DUP NOW -128 ADDCONST LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned f
+    DUP NOW timeout SUBCONST LESS                              // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned f
     IF:<{                                                      // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
         1 2 BLKDROP2                                           // msg_inner sign hash pubkey subwallet_id queries->old_queries last_cleaned
-        NOW 8 PUSHPOW2 SUB LESS                                 // msg_inner sign hash pubkey subwallet_id old_queries f
+        NOW timeout 2 * SUBCONST LESS                          // msg_inner sign hash pubkey subwallet_id old_queries f
         IF:<{                                                  // msg_inner sign hash pubkey subwallet_id old_queries
             DROP                                               // msg_inner sign hash pubkey subwallet_id
             NULL                                               // msg_inner sign hash pubkey subwallet_id old_queries
@@ -75,7 +77,7 @@
     s5 PUSH EQUAL 34 THROWIFNOT                                // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number created_at
 
     // check created_at
-    NOW 2DUP -128 ADDCONST MAX MIN EQUAL 35 THROWIFNOT         // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
+    NOW 2DUP timeout SUBCONST MAX MIN EQUAL 35 THROWIFNOT      // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number
 
     // check query_id in old_queries
     s1 s7 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey subwallet_id actions shift bit_number (value_cell -1 or 0)

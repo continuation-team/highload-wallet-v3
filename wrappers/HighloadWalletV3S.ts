@@ -4,24 +4,25 @@ import {
     Cell,
     Contract,
     contractAddress,
-    ContractProvider,
+    ContractProvider, Message,
     OutAction,
     Sender,
-    SendMode,
+    SendMode, storeMessage,
     storeOutList
 } from '@ton/core';
-import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
+import { hex as CodeHex } from '../build/HighloadWalletV3S.compiled.json';
 import { sign } from "ton-crypto";
+import {OP} from "../tests/imports/const";
 
-export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
+export const HighloadWalletV3SCode = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
-export type HighloadWalletV3Config = {
+export type HighloadWalletV3SConfig = {
     publicKey: Buffer,
     subwalletId: number,
 };
 
 
-export function highloadWalletV3ConfigToCell(config: HighloadWalletV3Config): Cell {
+export function highloadWalletV3SConfigToCell(config: HighloadWalletV3SConfig): Cell {
     return beginCell()
           .storeBuffer(config.publicKey)
           .storeUint(config.subwalletId, 32)
@@ -30,19 +31,19 @@ export function highloadWalletV3ConfigToCell(config: HighloadWalletV3Config): Ce
 }
 
 
-export class HighloadWalletV3 implements Contract {
+export class HighloadWalletV3S implements Contract {
     constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
 
 
     static createFromAddress(address: Address) {
-        return new HighloadWalletV3(address);
+        return new HighloadWalletV3S(address);
     }
 
 
-    static createFromConfig(config: HighloadWalletV3Config, workchain = 0) {
-        const data = highloadWalletV3ConfigToCell(config);
-        const init = { code: HighloadWalletV3Code, data };
-        return new HighloadWalletV3(contractAddress(workchain, init), init);
+    static createFromConfig(config: HighloadWalletV3SConfig, workchain = 0) {
+        const data = highloadWalletV3SConfigToCell(config);
+        const init = { code: HighloadWalletV3SCode, data };
+        return new HighloadWalletV3S(contractAddress(workchain, init), init);
     }
 
 
@@ -60,27 +61,29 @@ export class HighloadWalletV3 implements Contract {
         provider: ContractProvider,
         secretKey: Buffer,
         opts: {
+            message: Message | Cell,
+            mode: number
             shift: number,
             bitNumber: number,
             createdAt: number,
             subwalletId: number,
-            actions: OutAction[] | Cell
         }
     ){
-        let actionsCell: Cell;
-        if (opts.actions instanceof Cell) {
-            actionsCell = opts.actions
+        let messageCell: Cell;
+        if (opts.message instanceof Cell) {
+            messageCell = opts.message
         } else {
-            const actionsBuilder = beginCell();
-            storeOutList(opts.actions)(actionsBuilder);
-            actionsCell = actionsBuilder.endCell();
+            const messageBuilder = beginCell();
+            messageBuilder.store(storeMessage(opts.message))
+            messageCell = messageBuilder.endCell();
         }
         const messageInner = beginCell()
+                            .storeRef(messageCell)
+                            .storeUint(opts.mode, 8)
                             .storeUint(opts.shift, 14)
                             .storeUint(opts.bitNumber, 10)
                             .storeUint(opts.createdAt, 40)
                             .storeUint(opts.subwalletId, 32)
-                            .storeRef(actionsCell)
                             .endCell();
 
         await provider.external(
@@ -89,6 +92,34 @@ export class HighloadWalletV3 implements Contract {
            .storeRef(messageInner)
            .endCell()
         );
+    }
+
+    createInternalTransfer(opts: {
+        actions:  OutAction[] | Cell
+        queryId: number,
+        value: bigint
+    }) {
+        let actionsCell: Cell;
+        if (opts.actions instanceof Cell) {
+            actionsCell = opts.actions;
+        } else {
+            const actionsBuilder = beginCell();
+            storeOutList(opts.actions)(actionsBuilder);
+            actionsCell = actionsBuilder.endCell();
+        }
+        const body = beginCell()
+            .storeUint(OP.InternalTransfer, 32)
+            .storeUint(opts.queryId, 64)
+            .storeRef(actionsCell)
+            .endCell();
+
+        return beginCell()
+            .storeUint(0x10, 6)
+            .storeAddress(this.address)
+            .storeCoins(opts.value)
+            .storeUint(0, 107)
+            .storeSlice(body.asSlice())
+            .endCell();
     }
 
 

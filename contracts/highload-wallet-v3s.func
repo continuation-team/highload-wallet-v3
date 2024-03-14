@@ -1,5 +1,5 @@
 {-
-  highload-wallet-v3 – open-source optimized highload wallet for tvm-based blockchains
+  highload-wallet-v3s – open-source optimized highload wallet for tvm-based blockchains (s - safest vesrion)
 
   Copyright (C) 2023 Continuation Team
 
@@ -27,10 +27,43 @@ builder store_true(builder b) asm "STONE";
 ;;; Store `cell` [actions] to register c5 (out actions)
 () set_actions(cell actions) impure asm "c5 POP";
 
+;; load msg_flags only
+(slice, int) ~load_msg_flags(slice s) asm(-> 1 0) "4 LDU";
+
+;;; Checking that the "bounced" bit in the flags is set to "true"
+int bounced?(int flags) asm "ONE AND";
+
 builder store_zeroes(builder b, int x) asm "STZEROES";
+(slice, int) internal_transfer?(slice s) asm "x{ae42e5a4} SDBEGINSQ";
+(slice, ()) ~skip_query_id(slice s) asm "64 LDU NIP";
+(slice, ()) ~skip_ref(slice s) asm "LDREF NIP";
+(slice, ()) ~skip_coins(slice s) asm "LDGRAMS NIP";
+(slice, ()) ~skip_msg_addr(slice s) asm "LDMSGADDR NIP";
+(slice, ()) ~skip_zero(slice s) asm "b{0} SDBEGINS";
+(slice, ()) ~skip_dict(slice s) asm "SKIPOPTREF";
 
 
-() recv_internal() { }
+() recv_internal(cell in_msg_full, slice in_msg_body) {
+  (int body_bits, int body_refs) = in_msg_body.slice_bits_refs();
+  ifnot ((body_refs == 1) & (body_bits == (32 + 64))) {
+    return ();
+  }
+
+  slice in_msg_full_slice = in_msg_full.begin_parse();
+  int flags = in_msg_full_slice~load_msg_flags();
+  slice sender = in_msg_full_slice~load_msg_addr();
+
+  if ((~ sender.equal_slice_bits(my_address())) | (flags.bounced?())) {
+    return ();
+  }
+
+  if (in_msg_body~internal_transfer?()) {
+    in_msg_body~skip_query_id();
+    cell actions = in_msg_body.preload_ref();
+    set_actions(actions);
+    return ();
+  }
+}
 
 
 () recv_external(slice msg_body) {
@@ -57,7 +90,8 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
   throw_unless(33, check_signature(hash, sign, pubkey));
 
   slice cs            = msg_inner.begin_parse();
-  cell  actions       = cs~load_ref();
+  cell  message       = cs~load_ref();
+  int   mode          = cs~load_uint(8);
   int   shift         = cs~load_uint(14);
   int   bit_number    = cs~load_uint(10);
   int   created_at    = cs~load_uint(40);
@@ -98,7 +132,44 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
           .store_uint(last_cleaned, 40)
           .end_cell());
 
-  set_actions(actions);
+
+  commit();
+
+  slice message_slice = message.begin_parse();
+  {-
+    extra_currencies$_ dict:(HashmapE 32 (VarUInteger 32))
+               = ExtraCurrencyCollection;
+    currencies$_ grams:Grams other:ExtraCurrencyCollection
+               = CurrencyCollection;
+
+    int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+      src:MsgAddressInt dest:MsgAddressInt
+      value:CurrencyCollection ihr_fee:Grams fwd_fee:Grams
+      created_lt:uint64 created_at:uint32 = CommonMsgInfo;
+
+    message$_ {X:Type} info:CommonMsgInfo
+      init:(Maybe (Either StateInit ^StateInit))
+      body:(Either X ^X) = Message X;
+  -}
+
+  message_slice~skip_zero(); ;; throw if not int_msg_info$0
+  int flags = message_slice~load_uint(3);
+  if (flags.bounced?()) { return (); }
+  message_slice~skip_msg_addr();
+  message_slice~skip_msg_addr();
+  message_slice~skip_coins();
+  message_slice~skip_dict();
+  message_slice~skip_coins();
+  message_slice~skip_coins();
+  message_slice~skip_bits(64 + 32);
+  message_slice~skip_zero(); ;; throw if state-init included (state-init not supported)
+  int either_body = message_slice~load_int(1);
+  if (either_body) {
+    message_slice~skip_ref();
+    message_slice.end_parse();
+  }
+
+  send_raw_message(message, mode | 2);
 }
 
 
