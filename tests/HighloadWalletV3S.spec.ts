@@ -7,7 +7,7 @@ import { randomBytes } from "crypto";
 import {SUBWALLET_ID} from "./imports/const";
 
 
-describe('HighloadWalletV3', () => {
+describe('HighloadWalletV3S', () => {
     let keyPair: KeyPair;
 
     let blockchain: Blockchain;
@@ -31,7 +31,8 @@ describe('HighloadWalletV3', () => {
             HighloadWalletV3S.createFromConfig(
                 {
                     publicKey: keyPair.publicKey,
-                    subwalletId: SUBWALLET_ID
+                    subwalletId: SUBWALLET_ID,
+                    timeout: 128
                 }
             )
         );

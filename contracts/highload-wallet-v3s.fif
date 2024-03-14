@@ -18,19 +18,18 @@
 */
 
 "Asm.fif" include
-"auto/timeout.fif" include
 
 { $>B crc16 0xffff and 0x10000 or } : $>method_id
 
 <{
     SETCP0 DUP                                                 // ... selector selector
-    <{                                             // in_msg_full in_msg_body selector
+    <{                                                         // in_msg_full in_msg_body selector
         DROP                                                   // in_msg_full in_msg_body
         DUP SBITREFS                                           // in_msg_full in_msg_body body_bits body_refs
         1 EQINT SWAP 32 64 + EQINT AND                         // in_msg_full in_msg_body f
         IFNOTRET                                               // in_msg_full in_msg_body
         SWAP                                                   // in_msg_body in_msg_full
-        CTOS 4 LDU LDMSGADDR DROP                             // in_msg_body flags sender
+        CTOS 4 LDU LDMSGADDR DROP                              // in_msg_body flags sender
         SWAP ONE AND                                           // in_msg_body sender bounced?
         IFRET                                                  // in_msg_body sender
         MYADDR SDEQ IFNOTRET                                   // in_msg_body
@@ -41,7 +40,7 @@
     }>c
     IFNOTJMPREF
     DUP ISPOS                                                  // ... selector f
-    <{                                                // ... selector
+    <{                                                         // ... selector
         DUP                                                    // ... selector selector
         "get_public_key" $>method_id EQINT                     // ... selector f
         IFJMP:<{                                               // ... selector
@@ -71,10 +70,10 @@
     CTOS 256 LDU 32 LDU LDDICT LDDICT 40 PLDU                  // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
 
     // check and shift query dicts
-    DUP NOW timeout SUBCONST LESS                              // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned f
+    DUP NOW 128 SUBCONST LESS                                  // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned f
     IF:<{                                                      // msg_inner sign hash pubkey subwallet_id old_queries queries last_cleaned
         1 2 BLKDROP2                                           // msg_inner sign hash pubkey subwallet_id queries->old_queries last_cleaned
-        NOW timeout 2 * SUBCONST LESS                          // msg_inner sign hash pubkey subwallet_id old_queries f
+        NOW 8 PUSHPOW2 SUB LESS                                // msg_inner sign hash pubkey subwallet_id old_queries f
         IF:<{                                                  // msg_inner sign hash pubkey subwallet_id old_queries
             DROP                                               // msg_inner sign hash pubkey subwallet_id
             NULL                                               // msg_inner sign hash pubkey subwallet_id old_queries
@@ -94,7 +93,7 @@
     s6 PUSH EQUAL 34 THROWIFNOT                                // old_queries last_cleaned queries pubkey subwallet_id message mode shift bit_number created_at
 
     // check created_at
-    NOW 2DUP timeout SUBCONST MAX MIN EQUAL 35 THROWIFNOT         // old_queries last_cleaned queries pubkey subwallet_id message mode shift bit_number
+    NOW 2DUP 128 SUBCONST MAX MIN EQUAL 35 THROWIFNOT          // old_queries last_cleaned queries pubkey subwallet_id message mode shift bit_number
 
     // check query_id in old_queries
     s1 s8 PUSH2 14 INT DICTUGETREF                             // old_queries last_cleaned queries pubkey subwallet_id message mode shift bit_number (value_cell -1 or 0)

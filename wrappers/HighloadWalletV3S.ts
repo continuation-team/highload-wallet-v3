@@ -19,6 +19,7 @@ export const HighloadWalletV3SCode = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0
 export type HighloadWalletV3SConfig = {
     publicKey: Buffer,
     subwalletId: number,
+    timeout: number
 };
 
 
@@ -27,6 +28,7 @@ export function highloadWalletV3SConfigToCell(config: HighloadWalletV3SConfig): 
           .storeBuffer(config.publicKey)
           .storeUint(config.subwalletId, 32)
           .storeUint(0, 1 + 1 + 40)
+          .storeUint(config.timeout, 16)
           .endCell();
 }
 

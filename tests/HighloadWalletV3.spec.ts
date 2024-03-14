@@ -31,7 +31,8 @@ describe('HighloadWalletV3', () => {
             HighloadWalletV3.createFromConfig(
                 {
                     publicKey: keyPair.publicKey,
-                    subwalletId: SUBWALLET_ID
+                    subwalletId: SUBWALLET_ID,
+                    timeout: 128
                 }
             )
         );

@@ -18,7 +18,6 @@
 -}
 
 #include "imports/stdlib.fc";
-#include "auto/timeout.func";
 
 
 ;;; Store binary true b{1} to `builder` [b]
@@ -44,11 +43,12 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
   int   subwallet_id  = ds~load_uint(32);
   cell  old_queries   = ds~load_dict();
   cell  queries       = ds~load_dict();
-  int   last_cleaned  = ds.preload_uint(40);
+  int   last_cleaned  = ds~load_uint(40);
+  int   timeout       = ds.preload_uint(16);
 
-  if (last_cleaned < (now() - TIMEOUT)) {
+  if (last_cleaned < (now() - timeout)) {
     (old_queries, queries) = (queries, null());
-    if (last_cleaned < (now() - (TIMEOUT * 2))) {
+    if (last_cleaned < (now() - (timeout * 2))) {
       old_queries = null();
     }
     last_cleaned = now();
@@ -66,7 +66,7 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
 
   throw_unless(34, _subwallet_id == subwallet_id);
 
-  throw_unless(35, created_at == min(now(), max(created_at, now() - TIMEOUT)));
+  throw_unless(35, created_at == min(now(), max(created_at, now() - timeout)));
 
   (cell value, int f) = old_queries.udict_get_ref?(14, shift);
   if (f) {
@@ -96,6 +96,7 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
           .store_dict(old_queries)
           .store_dict(queries)
           .store_uint(last_cleaned, 40)
+          .store_uint(timeout, 16)
           .end_cell());
 
   set_actions(actions);
@@ -120,7 +121,9 @@ int get_last_cleaned() method_id {
 }
 
 int get_timeout() method_id {
-  return TIMEOUT;
+  slice ds = get_data().begin_parse();
+  ds~skip_bits(256 + 32 + 1 + 1 + 40);
+  return ds.preload_uint(16);
 }
 
 int processed?(int query_id) method_id {
