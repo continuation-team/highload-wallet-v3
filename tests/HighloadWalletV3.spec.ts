@@ -1,10 +1,12 @@
-import { Blockchain, BlockchainTransaction, SandboxContract } from '@ton/sandbox';
+import { Blockchain, BlockchainTransaction, EmulationError, SandboxContract } from '@ton/sandbox';
 import { beginCell, Cell, SendMode, toNano } from '@ton/core';
 import { HighloadWalletV3 } from '../wrappers/HighloadWalletV3';
 import '@ton/test-utils';
 import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
 import { randomBytes } from "crypto";
 import { SUBWALLET_ID } from "./imports/const";
+import { Errors } from "../wrappers/Constatns";
+import { getRandomInt } from "../utils";
 
 
 describe('HighloadWalletV3', () => {
@@ -12,9 +14,24 @@ describe('HighloadWalletV3', () => {
 
     let blockchain: Blockchain;
     let highloadWalletV3: SandboxContract<HighloadWalletV3>;
+    let shouldRejectWith: (p: Promise<unknown>, code: number) => Promise<void>;
 
     beforeAll(async () => {
         keyPair = keyPairFromSeed(await getSecureRandomBytes(32));
+        shouldRejectWith = async (p, code) => {
+            try {
+                await p;
+                throw new Error(`Should throw ${code}`);
+            }
+            catch(e: unknown) {
+                if(e instanceof EmulationError) {
+                    expect(e.exitCode !== undefined && e.exitCode == code).toBe(true);
+                }
+                else {
+                    throw e;
+                }
+            }
+        }
     });
 
     beforeEach(async () => {
@@ -71,14 +88,20 @@ describe('HighloadWalletV3', () => {
             });
         } catch (e: any) {
             console.log(e.vmLogs)
+            // Otherwise test will never fail
+            throw e;
         }
-
     });
 
-
     it('should fail check sign', async () => {
-        await expect(highloadWalletV3.sendExternalMessage(
-            randomBytes(64),
+        let badKey: Buffer;
+        // Just in case we win a lotto
+        do {
+            badKey = randomBytes(64);
+        } while(badKey.equals(keyPair.secretKey));
+
+        await shouldRejectWith(highloadWalletV3.sendExternalMessage(
+            badKey,
             {
                 createdAt: 1000,
                 shift: 0,
@@ -86,20 +109,21 @@ describe('HighloadWalletV3', () => {
                 actions: [],
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.invalid_signature);
+    });
     });
 
     it('should fail check created time', async () => {
-        await expect(highloadWalletV3.sendExternalMessage(
+        await shouldRejectWith(highloadWalletV3.sendExternalMessage(
             keyPair.secretKey,
             {
-                createdAt: 1000 - 130,
+                createdAt: 1000 - getRandomInt(100, 200),
                 shift: 0,
                 bitNumber: 0,
                 actions: [],
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.invalid_creation_time);
     });
 
     it('should fail check query_id in actual queries', async () => {
@@ -118,7 +142,7 @@ describe('HighloadWalletV3', () => {
             success: true
         });
 
-        await expect(highloadWalletV3.sendExternalMessage(
+        await shouldRejectWith(highloadWalletV3.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
@@ -127,7 +151,7 @@ describe('HighloadWalletV3', () => {
                 actions: [],
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.already_executed)
     });
 
     it('should fail check query_id in old queries', async () => {
@@ -148,7 +172,7 @@ describe('HighloadWalletV3', () => {
 
         blockchain.now = 1000 + 100;
 
-        await expect(highloadWalletV3.sendExternalMessage(
+        await shouldRejectWith(highloadWalletV3.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1050,
@@ -157,7 +181,7 @@ describe('HighloadWalletV3', () => {
                 actions: [],
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.already_executed)
     });
 
     it('should be cleared queries hashmaps', async () => {
