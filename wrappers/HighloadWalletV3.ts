@@ -101,7 +101,7 @@ export class HighloadWalletV3 implements Contract {
     }
 
     async getSubwalletId(provider: ContractProvider): Promise<number> {
-        const res = (await provider.get('get_public_key', [])).stack;
+        const res = (await provider.get('get_subwallet_id', [])).stack;
         return res.readNumber();
     }
 

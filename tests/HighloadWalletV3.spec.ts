@@ -111,6 +111,25 @@ describe('HighloadWalletV3', () => {
             }
         ), Errors.invalid_signature);
     });
+
+    it('should fail subwallet check', async () => {
+        let badSubwallet;
+
+        const curSubwallet= await highloadWalletV3.getSubwalletId();
+        expect(curSubwallet).toEqual(SUBWALLET_ID);
+        do {
+            badSubwallet = getRandomInt(0, 1000);
+        } while(badSubwallet == curSubwallet);
+
+        await shouldRejectWith(highloadWalletV3.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                shift: 0,
+                bitNumber: 0,
+                actions: [],
+                subwalletId: badSubwallet
+            }), Errors.invalid_subwallet);
     });
 
     it('should fail check created time', async () => {

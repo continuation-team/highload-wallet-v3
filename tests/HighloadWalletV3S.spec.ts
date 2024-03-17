@@ -94,6 +94,32 @@ describe('HighloadWalletV3S', () => {
         )).rejects.toThrow();
     });
 
+    it('should fail subwallet check', async () => {
+        let badSubwallet;
+
+        const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
+        const curSubwallet= await highloadWalletV3S.getSubwalletId();
+        expect(curSubwallet).toEqual(SUBWALLET_ID);
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
+        do {
+            badSubwallet = getRandomInt(0, 1000);
+        } while(badSubwallet == curSubwallet);
+
+        await shouldRejectWith(highloadWalletV3S.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                query_id: queryId,
+                mode: 128,
+                message,
+                subwalletId: badSubwallet
+            }), Errors.invalid_subwallet);
+    });
     it('should fail check created time', async () => {
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
         await expect(highloadWalletV3S.sendExternalMessage(
