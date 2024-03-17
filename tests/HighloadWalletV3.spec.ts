@@ -5,7 +5,7 @@ import '@ton/test-utils';
 import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
 import { randomBytes } from "crypto";
 import { SUBWALLET_ID } from "./imports/const";
-import { Errors } from "../wrappers/Constatns";
+import { Errors } from "./imports/const";
 import { getRandomInt } from "../utils";
 
 
