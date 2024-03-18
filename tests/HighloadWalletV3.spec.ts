@@ -7,10 +7,12 @@ import { randomBytes } from "crypto";
 import { SUBWALLET_ID } from "./imports/const";
 import { Errors } from "./imports/const";
 import { getRandomInt } from "../utils";
+import { compile } from '@ton/blueprint';
 
 
 describe('HighloadWalletV3', () => {
     let keyPair: KeyPair;
+    let code: Cell;
 
     let blockchain: Blockchain;
     let highloadWalletV3: SandboxContract<HighloadWalletV3>;
@@ -18,6 +20,7 @@ describe('HighloadWalletV3', () => {
 
     beforeAll(async () => {
         keyPair = keyPairFromSeed(await getSecureRandomBytes(32));
+        code    = await compile('HighloadWalletV3');
         shouldRejectWith = async (p, code) => {
             try {
                 await p;
@@ -50,7 +53,8 @@ describe('HighloadWalletV3', () => {
                     publicKey: keyPair.publicKey,
                     subwalletId: SUBWALLET_ID,
                     timeout: 128
-                }
+                },
+                code
             )
         );
 

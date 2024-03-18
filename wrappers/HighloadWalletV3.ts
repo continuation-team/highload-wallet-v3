@@ -10,10 +10,10 @@ import {
     SendMode,
     storeOutList
 } from '@ton/core';
-import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
+// import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
 import { sign } from "ton-crypto";
 
-export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
+// export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
 export type HighloadWalletV3Config = {
     publicKey: Buffer,
@@ -41,9 +41,9 @@ export class HighloadWalletV3 implements Contract {
     }
 
 
-    static createFromConfig(config: HighloadWalletV3Config, workchain = 0) {
+    static createFromConfig(config: HighloadWalletV3Config, code: Cell, workchain = 0) {
         const data = highloadWalletV3ConfigToCell(config);
-        const init = { code: HighloadWalletV3Code, data };
+        const init = { code, data };
         return new HighloadWalletV3(contractAddress(workchain, init), init);
     }
 

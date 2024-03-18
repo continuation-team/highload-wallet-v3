@@ -5,16 +5,19 @@ import '@ton/test-utils';
 import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
 import { randomBytes } from "crypto";
 import {SUBWALLET_ID} from "./imports/const";
+import { compile } from '@ton/blueprint';
 
 
 describe('HighloadWalletV3S', () => {
     let keyPair: KeyPair;
+    let code: Cell;
 
     let blockchain: Blockchain;
     let highloadWalletV3S: SandboxContract<HighloadWalletV3S>;
 
     beforeAll(async () => {
         keyPair = keyPairFromSeed(await getSecureRandomBytes(32));
+        code    = await compile('HighloadWalletV3S');
     });
 
     beforeEach(async () => {
@@ -33,7 +36,8 @@ describe('HighloadWalletV3S', () => {
                     publicKey: keyPair.publicKey,
                     subwalletId: SUBWALLET_ID,
                     timeout: 128
-                }
+                },
+                code
             )
         );
 
