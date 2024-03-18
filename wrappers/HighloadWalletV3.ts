@@ -115,8 +115,8 @@ export class HighloadWalletV3 implements Contract {
         return res.readNumber();
     }
 
-    async isProcessed(provider: ContractProvider, queryId: number): Promise<boolean> {
-        const res = (await provider.get('processed?', [])).stack;
+    async getProcessed(provider: ContractProvider, queryId: number): Promise<boolean> {
+        const res = (await provider.get('processed?', [{'type': 'int', 'value': BigInt(queryId)}])).stack;
         return res.readBoolean();
     }
 }
