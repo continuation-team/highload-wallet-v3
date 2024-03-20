@@ -277,6 +277,66 @@ describe('HighloadWalletV3S', () => {
             outMessagesCount: 1,
             actionResultCode: 0
         });
+    it('should handle 255 actions in one go', async () => {
+        let outMsgs: OutActionSendMsg[] = new Array(255);
+
+        for(let i = 0; i < 255; i++) {
+            outMsgs[i] = {
+                type: 'sendMsg',
+                mode: SendMode.NONE,
+                outMsg: internal_relaxed({
+                    to: randomAddress(),
+                    value: toNano('0.015'),
+                    body: beginCell().storeUint(i, 32).endCell()
+                }),
+            }
+        }
+
+        const res = await highloadWalletV3S.sendBatch(keyPair.secretKey, outMsgs, SUBWALLET_ID, 0, 1000);
+
+        expect(res.transactions).toHaveTransaction({
+            on: highloadWalletV3S.address,
+            outMessagesCount: 255
+        });
+        for(let i = 0; i < 255; i++) {
+            expect(res.transactions).toHaveTransaction({
+                from: highloadWalletV3S.address,
+                body: outMsgs[i].outMsg.body
+            })
+        }
+    });
+    it('should be able to go beyond 255 messages with chained internal_transfer', async () => {
+        const msgCount  = getRandomInt(256, 512);
+        const msgs : OutActionSendMsg[] = new Array(msgCount);
+
+        for(let i = 0; i < msgCount; i++) {
+            msgs[i] = {
+                type: 'sendMsg',
+                mode: SendMode.PAY_GAS_SEPARATELY,
+                outMsg: internal_relaxed({
+                    to: randomAddress(0),
+                    value: toNano('0.015'),
+                    body: beginCell().storeUint(i, 32).endCell()
+                })
+            };
+        }
+
+        const res = await highloadWalletV3S.sendBatch(keyPair.secretKey, msgs, SUBWALLET_ID, 0, 1000);
+
+        expect(res.transactions).toHaveTransaction({
+            on: highloadWalletV3S.address,
+            outMessagesCount: 255
+        });
+        expect(res.transactions).toHaveTransaction({
+            on: highloadWalletV3S.address,
+            outMessagesCount: msgCount - 254
+        });
+        for(let i = 0; i < msgCount; i++) {
+            expect(res.transactions).toHaveTransaction({
+                from: highloadWalletV3S.address,
+                body: msgs[i].outMsg.body
+            });
+        }
     });
 
     it('should work replay protection, but dont send message', async () => {

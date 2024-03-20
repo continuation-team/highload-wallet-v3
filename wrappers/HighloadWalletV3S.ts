@@ -104,6 +104,22 @@ export class HighloadWalletV3S implements Contract {
            .endCell()
         );
     }
+    async sendBatch (provider: ContractProvider, secretKey: Buffer, messages: OutActionSendMsg[], subwallet: number, query_id: number, createdAt?: number, value: bigint = 0n) {
+        if(createdAt == undefined) {
+            createdAt = Math.floor(Date.now() / 1000);
+        }
+        if(query_id > maxQueryId) {
+            throw new TypeError(`Max query id: ${maxQueryId} < ${query_id}`);
+        }
+
+        return await this.sendExternalMessage(provider, secretKey, {
+            message: this.packActions(messages, value, query_id),
+            mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
+            query_id: query_id,
+            createdAt: createdAt,
+            subwalletId: subwallet
+        });
+    }
 
     createInternalTransfer(opts: {
         actions:  OutAction[] | Cell
@@ -124,14 +140,40 @@ export class HighloadWalletV3S implements Contract {
             .storeRef(actionsCell)
             .endCell();
 
-        return beginCell()
+        return internal_relaxed({
+            to: this.address,
+            value: opts.value,
+            body
+        });
+        /*beginCell()
             .storeUint(0x10, 6)
             .storeAddress(this.address)
             .storeCoins(opts.value)
             .storeUint(0, 107)
             .storeSlice(body.asSlice())
             .endCell();
+            */
     }
+    packActions(messages: OutAction[], value: bigint = toNano('1'), query_id: number = 0) {
+        let batch: OutAction[];
+        if(messages.length > 255) {
+            batch = messages.slice(0, 254);
+            batch.push({
+                type: 'sendMsg',
+                mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
+                outMsg: this.packActions(messages.slice(254), value, query_id + 1)
+            });
+        }
+        else {
+            batch = messages;
+        }
+        return this.createInternalTransfer({
+            actions: batch,
+            queryId: query_id,
+            value
+        });
+    }
+
 
 
     async getPublicKey(provider: ContractProvider): Promise<Buffer> {
