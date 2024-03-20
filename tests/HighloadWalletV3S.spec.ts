@@ -1,11 +1,13 @@
-import { Blockchain, BlockchainTransaction, SandboxContract } from '@ton/sandbox';
-import { beginCell, Cell, SendMode, toNano } from '@ton/core';
+import { Blockchain, EmulationError, SandboxContract, createShardAccount } from '@ton/sandbox';
+import { beginCell, Cell, SendMode, toNano, Address, internal as internal_relaxed, Dictionary, BitString, MessageRelaxed, OutAction, OutActionSendMsg } from '@ton/core';
 import { HighloadWalletV3S } from '../wrappers/HighloadWalletV3S';
 import '@ton/test-utils';
 import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
 import { randomBytes } from "crypto";
-import {SUBWALLET_ID} from "./imports/const";
+import {SUBWALLET_ID, Errors} from "./imports/const";
 import { compile } from '@ton/blueprint';
+import { getRandomInt } from '../utils';
+import { findTransactionRequired, randomAddress } from '@ton/test-utils';
 
 
 describe('HighloadWalletV3S', () => {
@@ -15,9 +17,37 @@ describe('HighloadWalletV3S', () => {
     let blockchain: Blockchain;
     let highloadWalletV3S: SandboxContract<HighloadWalletV3S>;
 
+    let shouldRejectWith: (p: Promise<unknown>, code: number) => Promise<void>;
+    let getContractData: (address: Address) => Promise<Cell>;
+
     beforeAll(async () => {
         keyPair = keyPairFromSeed(await getSecureRandomBytes(32));
         code    = await compile('HighloadWalletV3S');
+
+        shouldRejectWith = async (p, code) => {
+            try {
+                await p;
+                throw new Error(`Should throw ${code}`);
+            }
+            catch(e: unknown) {
+                if(e instanceof EmulationError) {
+                    expect(e.exitCode !== undefined && e.exitCode == code).toBe(true);
+                }
+                else {
+                    throw e;
+                }
+            }
+        }
+        getContractData = async (address: Address) => {
+          const smc = await blockchain.getContract(address);
+          if(!smc.account.account)
+            throw("Account not found")
+          if(smc.account.account.storage.state.type != "active" )
+            throw("Atempting to get data on inactive account");
+          if(!smc.account.account.storage.state.state.data)
+            throw("Data is not present");
+          return smc.account.account.storage.state.state.data
+        }
     });
 
     beforeEach(async () => {
@@ -59,12 +89,16 @@ describe('HighloadWalletV3S', () => {
     it('should pass check sign', async () => {
         try {
             const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
+            const rndShift   = getRandomInt(0, 16383);
+            const rndBitNum  = getRandomInt(0, 1022);
+
+            const queryId = (rndShift << 10) + rndBitNum;
+
             const testResult = await highloadWalletV3S.sendExternalMessage(
                 keyPair.secretKey,
                 {
                     createdAt: 1000,
-                    shift: 0,
-                    bitNumber: 0,
+                    query_id: queryId,
                     message,
                     mode: 128,
                     subwalletId: SUBWALLET_ID
@@ -78,6 +112,7 @@ describe('HighloadWalletV3S', () => {
             });
         } catch (e: any) {
             console.log(e.vmLogs)
+            throw(e);
         }
 
     });
@@ -85,17 +120,28 @@ describe('HighloadWalletV3S', () => {
 
     it('should fail check sign', async () => {
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
-        await expect(highloadWalletV3S.sendExternalMessage(
-            randomBytes(64),
+
+        let badKey: Buffer;
+        // Just in case we win a lotto
+        do {
+            badKey = randomBytes(64);
+        } while(badKey.equals(keyPair.secretKey));
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
+        await shouldRejectWith(highloadWalletV3S.sendExternalMessage(
+            badKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.invalid_signature)
     });
 
     it('should fail subwallet check', async () => {
@@ -126,27 +172,40 @@ describe('HighloadWalletV3S', () => {
     });
     it('should fail check created time', async () => {
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
-        await expect(highloadWalletV3S.sendExternalMessage(
+
+        const curTimeout = await highloadWalletV3S.getTimeout();
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
+
+        await shouldRejectWith(highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
-                createdAt: 1000 - 130,
-                shift: 0,
-                bitNumber: 0,
+                createdAt: 1000 - getRandomInt(curTimeout + 1, curTimeout + 200),
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.invalid_creation_time);
     });
 
     it('should fail check query_id in actual queries', async () => {
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
         const testResult = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
@@ -157,28 +216,84 @@ describe('HighloadWalletV3S', () => {
             to: highloadWalletV3S.address,
             success: true
         });
+        expect(await highloadWalletV3S.getProcessed(queryId)).toBe(true);
+
+        await shouldRejectWith(highloadWalletV3S.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                query_id: queryId,
+                message,
+                mode: 128,
+                subwalletId: SUBWALLET_ID
+            }
+        ), Errors.already_executed);
+    });
+    it('should work with max bitNumber = 1022', async () => {
+        // bitNumber is a low part of 24 bit query_id
+        const shift = getRandomInt(0, 16383);
+        const queryId = (shift << 10) + 1022;
+        await expect(highloadWalletV3S.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                query_id: queryId,
+                message: internal_relaxed({
+                    to: randomAddress(0),
+                    value: 0n,
+                }),
+                mode: 0,
+                subwalletId: SUBWALLET_ID
+            })).resolves.not.toThrow(EmulationError);
+    });
+
+    it('should reject bitNumber = 1023', async () => {
+        // bitNumber is a low part of 24 bit query_id
+        const shift = getRandomInt(0, 16383);
+        const queryId = (shift << 10) + 1023;
 
         await expect(highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
-                message,
-                mode: 128,
+                query_id: queryId,
+                message: internal_relaxed({
+                    to: randomAddress(0),
+                    value: 0n,
+                }),
+                mode: 0,
                 subwalletId: SUBWALLET_ID
-            }
-        )).rejects.toThrow();
+            })).rejects.toThrow(EmulationError);
+    });
+    it('should work with max shift = 16383', async () => {
+        // Shift is a high part of 24 bit query_id
+        await expect(highloadWalletV3S.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                query_id: 16383 << 10,
+                message: internal_relaxed({
+                    to: randomAddress(0),
+                    value: 0n,
+                }),
+                mode: 0,
+                subwalletId: SUBWALLET_ID
+            })).resolves.not.toThrow(EmulationError);
     });
 
     it('should fail check query_id in old queries', async () => {
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
         const testResult = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
@@ -191,28 +306,33 @@ describe('HighloadWalletV3S', () => {
         });
 
         blockchain.now = 1000 + 100;
+        expect(await highloadWalletV3S.getProcessed(queryId)).toBe(true);
 
-        await expect(highloadWalletV3S.sendExternalMessage(
+        await shouldRejectWith(highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1050,
-                shift: 0,
-                bitNumber: 0,
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
             }
-        )).rejects.toThrow();
+        ), Errors.already_executed)
     });
 
     it('should be cleared queries hashmaps', async () => {
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
         const testResult1 = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
@@ -225,13 +345,18 @@ describe('HighloadWalletV3S', () => {
         });
 
         blockchain.now = 1000 + 260;
+        expect(await highloadWalletV3S.getProcessed(queryId)).toBe(true);
+
+        const newShift   = getRandomInt(0, 16383);
+        const newBitNum  = getRandomInt(0, 1022);
+
+        const newQueryId = (newShift << 10) + newBitNum;
 
         const testResult2 = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1200,
-                shift: 0,
-                bitNumber: 0,
+                query_id: newQueryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
@@ -242,9 +367,94 @@ describe('HighloadWalletV3S', () => {
             to: highloadWalletV3S.address,
             success: true
         });
+        expect(await highloadWalletV3S.getProcessed(queryId)).toBe(false);
+        expect(await highloadWalletV3S.getProcessed(newQueryId)).toBe(true);
+        expect(await highloadWalletV3S.getLastCleaned()).toEqual(testResult2.transactions[0].now);
     });
+    it('queries dictionary with max keys should fit in credit limit', async () => {
+        // 2 ** 14 - 1 = 16383 keys
+        // Artificial situation where both dict's get looked up
+        const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
+        const newQueries = Dictionary.empty(Dictionary.Keys.Uint(14), Dictionary.Values.Cell());
+        const padding = new BitString(Buffer.alloc(128, 0), 0, 1023 - 14);
 
-    it('should send ordinary transaction', async () => {
+        for(let i = 0; i < 16383; i++) {
+            newQueries.set(i, beginCell().storeUint(i, 14).storeBits(padding).endCell());
+        }
+
+        const smc = await blockchain.getContract(highloadWalletV3S.address);
+        const walletState = await getContractData(highloadWalletV3S.address);
+        const ws   = walletState.beginParse();
+        const head = ws.loadBits(256 + 32); // pubkey + subwallet
+        const tail = ws.skip(2 + 40).loadBits(16);
+
+        const newState = beginCell()
+                          .storeBits(head)
+                          .storeDict(null)
+                          .storeDict(newQueries)
+                          .storeUint(2000, 40) // Make sure both dicts pass last_cleaned check
+                          .storeBits(tail)
+                        .endCell();
+
+        await blockchain.setShardAccount(highloadWalletV3S.address, createShardAccount({
+            address: highloadWalletV3S.address,
+            code,
+            data: newState,
+            balance: smc.balance,
+            workchain: 0
+        }));
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+        await expect(highloadWalletV3S.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                createdAt: 1000,
+                query_id: queryId,
+                message,
+                mode: 128,
+                subwalletId: SUBWALLET_ID
+            })).resolves.not.toThrow();
+    });
+    it('should send internal message', async () => {
+        const testAddr   = randomAddress(0);
+        const testBody   = beginCell().storeUint(getRandomInt(0, 1000000), 32).endCell();
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
+        let res = await highloadWalletV3S.sendExternalMessage(
+            keyPair.secretKey,
+            {
+                query_id: queryId,
+                message: internal_relaxed({
+                    to: testAddr,
+                    bounce: false,
+                    value: toNano('123'),
+                    body: testBody
+                }),
+                createdAt: 1000,
+                mode: SendMode.PAY_GAS_SEPARATELY,
+                subwalletId: SUBWALLET_ID
+        });
+        expect(res.transactions).toHaveTransaction({
+            on: testAddr,
+            from: highloadWalletV3S.address,
+            value: toNano('123'),
+            body: testBody
+        });
+    });
+    it('should send external message', async () => {
+        const testBody   = beginCell().storeUint(getRandomInt(0, 1000000), 32).endCell();
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
 
         const message = highloadWalletV3S.createInternalTransfer({actions: [{
                     type: 'sendMsg',
@@ -255,28 +465,34 @@ describe('HighloadWalletV3S', () => {
                             createdAt: 0,
                             createdLt: 0n
                         },
-                        body: beginCell().endCell()
+                        body: testBody
                     }
                 }], queryId: 0, value: 0n})
         const testResult = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
+                query_id: queryId,
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
             }
         );
 
-        expect(testResult.transactions).toHaveTransaction({
+        const sentTx = findTransactionRequired(testResult.transactions, {
             from: highloadWalletV3S.address,
             to: highloadWalletV3S.address,
             success: true,
             outMessagesCount: 1,
             actionResultCode: 0
         });
+
+        expect(sentTx.externals.length).toBe(1);
+        expect(sentTx.externals[0].body).toEqualCell(testBody);
+
+        const processed = await highloadWalletV3S.getProcessed(queryId);
+        expect(processed).toBe(true);
+    });
     it('should handle 255 actions in one go', async () => {
         let outMsgs: OutActionSendMsg[] = new Array(255);
 
@@ -344,8 +560,7 @@ describe('HighloadWalletV3S', () => {
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                shift: 0,
-                bitNumber: 0,
+                query_id: 0,
                 message: beginCell().storeUint(239, 17).endCell(),
                 mode: 2,
                 subwalletId: SUBWALLET_ID
