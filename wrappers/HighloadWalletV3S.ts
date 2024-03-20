@@ -5,10 +5,15 @@ import {
     Contract,
     contractAddress,
     ContractProvider, Message,
+    MessageRelaxed,
     OutAction,
     Sender,
     SendMode, storeMessage,
-    storeOutList
+    storeMessageRelaxed,
+    storeOutList,
+    toNano,
+    internal as internal_relaxed,
+    OutActionSendMsg
 } from '@ton/core';
 // import { hex as CodeHex } from '../build/HighloadWalletV3S.compiled.json';
 import { sign } from "ton-crypto";
@@ -32,8 +37,11 @@ export function highloadWalletV3SConfigToCell(config: HighloadWalletV3SConfig): 
           .endCell();
 }
 
+export const maxQueryId = ((2 ** 14) - 1) * 1022;
+
 
 export class HighloadWalletV3S implements Contract {
+
     constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
 
 
@@ -63,27 +71,28 @@ export class HighloadWalletV3S implements Contract {
         provider: ContractProvider,
         secretKey: Buffer,
         opts: {
-            message: Message | Cell,
-            mode: number
-            shift: number,
-            bitNumber: number,
+            message: MessageRelaxed | Cell,
+            mode: number,
+            query_id: number,
             createdAt: number,
             subwalletId: number,
         }
     ){
         let messageCell: Cell;
+        if(opts.query_id > maxQueryId) {
+            throw new TypeError(`Max query id: ${maxQueryId} < ${opts.query_id}`);
+        }
         if (opts.message instanceof Cell) {
             messageCell = opts.message
         } else {
             const messageBuilder = beginCell();
-            messageBuilder.store(storeMessage(opts.message))
+            messageBuilder.store(storeMessageRelaxed(opts.message))
             messageCell = messageBuilder.endCell();
         }
         const messageInner = beginCell()
                             .storeRef(messageCell)
                             .storeUint(opts.mode, 8)
-                            .storeUint(opts.shift, 14)
-                            .storeUint(opts.bitNumber, 10)
+                            .storeUint(opts.query_id, 24)
                             .storeUint(opts.createdAt, 40)
                             .storeUint(opts.subwalletId, 32)
                             .endCell();
