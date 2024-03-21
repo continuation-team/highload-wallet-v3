@@ -18,6 +18,7 @@ import {
 // import { hex as CodeHex } from '../build/HighloadWalletV3S.compiled.json';
 import { sign } from "ton-crypto";
 import {OP} from "../tests/imports/const";
+import { QueryIterator, maxQueryId } from "./QueryIterator";
 
 // export const HighloadWalletV3SCode = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
@@ -36,9 +37,6 @@ export function highloadWalletV3SConfigToCell(config: HighloadWalletV3SConfig): 
           .storeUint(config.timeout, 16)
           .endCell();
 }
-
-export const maxQueryId = ((2 ** 14) - 1) * 1022;
-
 
 export class HighloadWalletV3S implements Contract {
 
@@ -73,13 +71,14 @@ export class HighloadWalletV3S implements Contract {
         opts: {
             message: MessageRelaxed | Cell,
             mode: number,
-            query_id: number,
+            query_id: number | QueryIterator,
             createdAt: number,
             subwalletId: number,
         }
     ){
         let messageCell: Cell;
-        if(opts.query_id > maxQueryId) {
+
+        if(Number(opts.query_id) > maxQueryId) {
             throw new TypeError(`Max query id: ${maxQueryId} < ${opts.query_id}`);
         }
         if (opts.message instanceof Cell) {
@@ -92,7 +91,7 @@ export class HighloadWalletV3S implements Contract {
         const messageInner = beginCell()
                             .storeRef(messageCell)
                             .storeUint(opts.mode, 8)
-                            .storeUint(opts.query_id, 24)
+                            .storeUint(Number(opts.query_id), 24)
                             .storeUint(opts.createdAt, 40)
                             .storeUint(opts.subwalletId, 32)
                             .endCell();
@@ -104,14 +103,13 @@ export class HighloadWalletV3S implements Contract {
            .endCell()
         );
     }
-    async sendBatch (provider: ContractProvider, secretKey: Buffer, messages: OutActionSendMsg[], subwallet: number, query_id: number, createdAt?: number, value: bigint = 0n) {
+    async sendBatch (provider: ContractProvider, secretKey: Buffer, messages: OutActionSendMsg[], subwallet: number, query_id: QueryIterator, createdAt?: number, value: bigint = 0n) {
         if(createdAt == undefined) {
             createdAt = Math.floor(Date.now() / 1000);
         }
-        if(query_id > maxQueryId) {
+        if(Number(query_id) > maxQueryId) {
             throw new TypeError(`Max query id: ${maxQueryId} < ${query_id}`);
         }
-
         return await this.sendExternalMessage(provider, secretKey, {
             message: this.packActions(messages, value, query_id),
             mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
@@ -154,14 +152,14 @@ export class HighloadWalletV3S implements Contract {
             .endCell();
             */
     }
-    packActions(messages: OutAction[], value: bigint = toNano('1'), query_id: number = 0) {
+    packActions(messages: OutAction[], value: bigint = toNano('1'), query_id: QueryIterator) {
         let batch: OutAction[];
         if(messages.length > 255) {
             batch = messages.slice(0, 254);
             batch.push({
                 type: 'sendMsg',
                 mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
-                outMsg: this.packActions(messages.slice(254), value, query_id + 1)
+                outMsg: this.packActions(messages.slice(254), value, QueryIterator.fromQueryId(query_id.peekNext()))
             });
         }
         else {
@@ -173,7 +171,6 @@ export class HighloadWalletV3S implements Contract {
             value
         });
     }
-
 
 
     async getPublicKey(provider: ContractProvider): Promise<Buffer> {
