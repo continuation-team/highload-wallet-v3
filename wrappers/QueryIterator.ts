@@ -51,7 +51,7 @@ export class QueryIterator {
         const peekBit = (this.bitnumber + 1) % 1023;
         // If bitnumbe overflowed
         if(peekBit == 0) {
-            peekShift = (this.shift + 1) % maxShift;
+            peekShift = (this.shift + 1) % maxKeyCount;
         }
         else {
             peekShift = this.shift;
