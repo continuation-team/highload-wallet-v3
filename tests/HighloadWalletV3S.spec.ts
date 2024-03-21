@@ -1,5 +1,5 @@
-import { Blockchain, EmulationError, SandboxContract, createShardAccount } from '@ton/sandbox';
-import { beginCell, Cell, SendMode, toNano, Address, internal as internal_relaxed, Dictionary, BitString, MessageRelaxed, OutAction, OutActionSendMsg } from '@ton/core';
+import { Blockchain, EmulationError, SandboxContract, createShardAccount, internal } from '@ton/sandbox';
+import { beginCell, Cell, SendMode, toNano, Address, internal as internal_relaxed, Dictionary, BitString, OutActionSendMsg } from '@ton/core';
 import { HighloadWalletV3S } from '../wrappers/HighloadWalletV3S';
 import '@ton/test-utils';
 import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
@@ -8,6 +8,8 @@ import {SUBWALLET_ID, Errors} from "./imports/const";
 import { compile } from '@ton/blueprint';
 import { getRandomInt } from '../utils';
 import { findTransactionRequired, randomAddress } from '@ton/test-utils';
+import { QueryIterator, maxQueryId } from '../wrappers/QueryIterator';
+import { MsgGenerator } from '../wrappers/MsgGenerator';
 
 
 describe('HighloadWalletV3S', () => {
@@ -267,11 +269,13 @@ describe('HighloadWalletV3S', () => {
     });
     it('should work with max shift = 16383', async () => {
         // Shift is a high part of 24 bit query_id
+        const rndBitNum = getRandomInt(0, 1022);
+        const qIter = new QueryIterator(16383, rndBitNum);
         await expect(highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
-                query_id: 16383 << 10,
+                query_id: qIter,
                 message: internal_relaxed({
                     to: randomAddress(0),
                     value: 0n,
@@ -494,6 +498,7 @@ describe('HighloadWalletV3S', () => {
         expect(processed).toBe(true);
     });
     it('should handle 255 actions in one go', async () => {
+        const curQuery = new QueryIterator();
         let outMsgs: OutActionSendMsg[] = new Array(255);
 
         for(let i = 0; i < 255; i++) {
@@ -508,7 +513,7 @@ describe('HighloadWalletV3S', () => {
             }
         }
 
-        const res = await highloadWalletV3S.sendBatch(keyPair.secretKey, outMsgs, SUBWALLET_ID, 0, 1000);
+        const res = await highloadWalletV3S.sendBatch(keyPair.secretKey, outMsgs, SUBWALLET_ID, curQuery, 1000);
 
         expect(res.transactions).toHaveTransaction({
             on: highloadWalletV3S.address,
@@ -520,10 +525,12 @@ describe('HighloadWalletV3S', () => {
                 body: outMsgs[i].outMsg.body
             })
         }
+        expect(await highloadWalletV3S.getProcessed(Number(curQuery))).toBe(true);
     });
     it('should be able to go beyond 255 messages with chained internal_transfer', async () => {
         const msgCount  = getRandomInt(256, 512);
         const msgs : OutActionSendMsg[] = new Array(msgCount);
+        const curQuery = new QueryIterator();
 
         for(let i = 0; i < msgCount; i++) {
             msgs[i] = {
@@ -537,7 +544,7 @@ describe('HighloadWalletV3S', () => {
             };
         }
 
-        const res = await highloadWalletV3S.sendBatch(keyPair.secretKey, msgs, SUBWALLET_ID, 0, 1000);
+        const res = await highloadWalletV3S.sendBatch(keyPair.secretKey, msgs, SUBWALLET_ID, curQuery, 1000);
 
         expect(res.transactions).toHaveTransaction({
             on: highloadWalletV3S.address,
@@ -553,8 +560,127 @@ describe('HighloadWalletV3S', () => {
                 body: msgs[i].outMsg.body
             });
         }
+        expect(await highloadWalletV3S.getProcessed(Number(curQuery))).toBe(true);
     });
+    it('should ignore internal transfer from address different from self', async () => {
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
 
+        const queryId    = (rndShift << 10) + rndBitNum;
+        const testAddr   = randomAddress(0);
+
+        const transferBody = HighloadWalletV3S.createInternalTransferBody({
+            queryId,
+            actions: [{
+                type: 'sendMsg',
+                mode: SendMode.PAY_GAS_SEPARATELY,
+                outMsg: internal_relaxed({
+                    to: testAddr,
+                    value: toNano('1000')
+                })
+            }]});
+
+        let res = await blockchain.sendMessage(internal({
+            from: testAddr,
+            to: highloadWalletV3S.address,
+            value: toNano('1'),
+            body: transferBody
+        }));
+
+        expect(res.transactions).not.toHaveTransaction({
+            on: testAddr,
+            from: highloadWalletV3S.address,
+            value: toNano('1000')
+        });
+
+        // Make sure we failed because of source address
+
+        res = await blockchain.sendMessage(internal({
+            from: highloadWalletV3S.address, // Self
+            to: highloadWalletV3S.address,
+            value: toNano('1'),
+            body: transferBody
+        }));
+        expect(res.transactions).toHaveTransaction({
+            on: testAddr,
+            from: highloadWalletV3S.address,
+            value: toNano('1000')
+        });
+    });
+    it('should ignore bounced messages', async () => {
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId    = new QueryIterator(rndShift, rndBitNum);
+        const testAddr   = randomAddress(0);
+
+        const transferBody = HighloadWalletV3S.createInternalTransferBody({
+            queryId,
+            actions: [{
+                type: 'sendMsg',
+                mode: SendMode.PAY_GAS_SEPARATELY,
+                outMsg: internal_relaxed({
+                    to: testAddr,
+                    value: toNano('1000')
+                })
+            }]});
+        // Let's be tricky and send bounced message from trusted address
+        let res = await blockchain.sendMessage(internal({
+            from: highloadWalletV3S.address,
+            to: highloadWalletV3S.address,
+            body: transferBody,
+            value: toNano('1'),
+            bounced: true
+        }));
+
+        expect(res.transactions).not.toHaveTransaction({
+            on: testAddr,
+            from: highloadWalletV3S.address,
+            value: toNano('1000')
+        });
+
+        // Make sure we failed because of bounced flag
+
+        res = await blockchain.sendMessage(internal({
+            from: highloadWalletV3S.address,
+            to: highloadWalletV3S.address,
+            body: transferBody,
+            value: toNano('1'),
+            bounced: false
+        }));
+
+        expect(res.transactions).toHaveTransaction({
+            on: testAddr,
+            from: highloadWalletV3S.address,
+            value: toNano('1000')
+        });
+    });
+    it('should ignore invalid message in payload', async () => {
+        const testAddr     = randomAddress(0);
+        const badGenerator = new MsgGenerator(0);
+        const queryIter    = new QueryIterator();
+
+        for(let badMsg of badGenerator.generateBadMsg()) {
+            const res = await highloadWalletV3S.sendExternalMessage(
+                keyPair.secretKey,
+                {
+                    mode: SendMode.NONE,
+                    message: badMsg,
+                    query_id: queryIter,
+                    subwalletId: SUBWALLET_ID,
+                    createdAt: 1000
+                });
+            expect(res.transactions).toHaveTransaction({
+                on: highloadWalletV3S.address,
+                success: true, // Compute phase has to succeed
+                outMessagesCount: 0
+            });
+            // Expect query to be processed
+            expect(await highloadWalletV3S.getProcessed(Number(queryIter))).toBe(true);
+            queryIter.next();
+        }
+    });
     it('should work replay protection, but dont send message', async () => {
         const testResult = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
@@ -574,5 +700,4 @@ describe('HighloadWalletV3S', () => {
             actionResultCode: 0
         });
     });
-
 });
