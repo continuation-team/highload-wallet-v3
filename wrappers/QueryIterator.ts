@@ -31,7 +31,7 @@ export class QueryIterator {
         if(query_id > maxQueryId) {
             throw new TypeError(`${query_id} > ${maxQueryId}`);
         }
-        return new QueryIterator(query_id << 10, query_id & 1023);
+        return new QueryIterator(query_id >> 10, query_id & 1023);
     }
     
     valueOf() {
