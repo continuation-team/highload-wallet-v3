@@ -20,26 +20,14 @@
 #include "imports/stdlib.fc";
 
 
-;;; Store binary true b{1} to `builder` [b]
+;;; Store binary true b{1} into `builder` [b]
 builder store_true(builder b) asm "STONE";
-
+;;; Stores [x] binary zeroes into `builder` [b].
+builder store_zeroes(builder b, int x) asm "STZEROES";
 ;;; Store `cell` [actions] to register c5 (out actions)
 () set_actions(cell actions) impure asm "c5 POP";
 
-;; load msg_flags only
-(slice, int) ~load_msg_flags(slice s) asm(-> 1 0) "4 LDU";
-
-;;; Checking that the "bounced" bit in the flags is set to "true"
-int bounced?(int flags) asm "ONE AND";
-
-builder store_zeroes(builder b, int x) asm "STZEROES";
-(slice, int) internal_transfer?(slice s) asm "x{ae42e5a4} SDBEGINSQ";
-(slice, ()) ~skip_query_id(slice s) asm "64 LDU NIP";
-(slice, ()) ~skip_ref(slice s) asm "LDREF NIP";
-(slice, ()) ~skip_coins(slice s) asm "LDGRAMS NIP";
-(slice, ()) ~skip_msg_addr(slice s) asm "LDMSGADDR NIP";
-(slice, ()) ~skip_zero(slice s) asm "b{0} SDBEGINS";
-(slice, ()) ~skip_dict(slice s) asm "SKIPOPTREF";
+const int op::internal_transfer = 0xae42e5a4;
 
 
 () recv_internal(cell in_msg_full, slice in_msg_body) {
@@ -49,15 +37,17 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
   }
 
   slice in_msg_full_slice = in_msg_full.begin_parse();
-  int flags = in_msg_full_slice~load_msg_flags();
+  int flags = in_msg_full_slice~load_uint(4);
   slice sender = in_msg_full_slice~load_msg_addr();
 
-  if ((~ sender.equal_slice_bits(my_address())) | (flags.bounced?())) {
+  if ((~ sender.equal_slice_bits(my_address())) | (flags & 1)) {
     return ();
   }
 
-  if (in_msg_body~internal_transfer?()) {
-    in_msg_body~skip_query_id();
+  int op = in_msg_body~load_uint(32);
+
+  if (op == op::internal_transfer) {
+    in_msg_body~skip_bits(64);
     cell actions = in_msg_body.preload_ref();
     set_actions(actions);
     return ();
@@ -153,20 +143,22 @@ builder store_zeroes(builder b, int x) asm "STZEROES";
       body:(Either X ^X) = Message X;
   -}
 
-  message_slice~skip_zero(); ;; throw if not int_msg_info$0
+  int constructor = message_slice~load_uint(1);
+  throw_if(37, constructor);
   int flags = message_slice~load_uint(3);
-  if (flags.bounced?()) { return (); }
-  message_slice~skip_msg_addr();
-  message_slice~skip_msg_addr();
-  message_slice~skip_coins();
-  message_slice~skip_dict();
-  message_slice~skip_coins();
-  message_slice~skip_coins();
+  if (flags & 1) { return (); }
+  message_slice~load_msg_addr();
+  message_slice~load_msg_addr();
+  message_slice~load_coins();
+  message_slice = message_slice.skip_dict();
+  message_slice~load_coins();
+  message_slice~load_coins();
   message_slice~skip_bits(64 + 32);
-  message_slice~skip_zero(); ;; throw if state-init included (state-init not supported)
+  int maybe_stateinit = message_slice~load_uint(1);
+  throw_if(37, maybe_stateinit); ;; throw if state-init included (state-init not supported)
   int either_body = message_slice~load_int(1);
   if (either_body) {
-    message_slice~skip_ref();
+    message_slice~load_ref();
     message_slice.end_parse();
   }
 
@@ -201,10 +193,20 @@ int processed?(int query_id) method_id {
   int shift      = query_id >> 10;
   int bit_number = query_id & 1023;
 
-  slice ds          = get_data().begin_parse();
+  slice ds           = get_data().begin_parse();
   ds~skip_bits(256 + 32);
-  cell  old_queries = ds~load_dict();
-  cell  queries     = ds~load_dict();
+  cell  old_queries  = ds~load_dict();
+  cell  queries      = ds~load_dict();
+  int   last_cleaned = ds~load_uint(40);
+  int   timeout      = ds.preload_uint(16);
+
+  if (last_cleaned < (now() - timeout)) {
+    (old_queries, queries) = (queries, null());
+    if (last_cleaned < (now() - (timeout * 2))) {
+      old_queries = null();
+    }
+    last_cleaned = now();
+  }
 
   (cell value, int f) = old_queries.udict_get_ref?(14, shift);
   if (f) {
