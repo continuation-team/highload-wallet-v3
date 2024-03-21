@@ -119,10 +119,9 @@ export class HighloadWalletV3S implements Contract {
         });
     }
 
-    createInternalTransfer(opts: {
-        actions:  OutAction[] | Cell
-        queryId: number,
-        value: bigint
+    static createInternalTransferBody(opts: {
+        actions: OutAction[] | Cell,
+        queryId: number | QueryIterator,
     }) {
         let actionsCell: Cell;
         if (opts.actions instanceof Cell) {
@@ -132,16 +131,24 @@ export class HighloadWalletV3S implements Contract {
             storeOutList(opts.actions)(actionsBuilder);
             actionsCell = actionsBuilder.endCell();
         }
-        const body = beginCell()
-            .storeUint(OP.InternalTransfer, 32)
-            .storeUint(opts.queryId, 64)
-            .storeRef(actionsCell)
-            .endCell();
+        return beginCell().storeUint(OP.InternalTransfer, 32)
+                          .storeUint(Number(opts.queryId), 64)
+                          .storeRef(actionsCell)
+                          .endCell();
+
+
+    }
+    createInternalTransfer(opts: {
+        actions:  OutAction[] | Cell
+        queryId: number | QueryIterator,
+        value: bigint
+    }) {
+        let actionsCell: Cell;
 
         return internal_relaxed({
             to: this.address,
             value: opts.value,
-            body
+            body: HighloadWalletV3S.createInternalTransferBody(opts)
         });
         /*beginCell()
             .storeUint(0x10, 6)
