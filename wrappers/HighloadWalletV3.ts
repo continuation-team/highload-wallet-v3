@@ -12,6 +12,7 @@ import {
 } from '@ton/core';
 // import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
 import { sign } from "ton-crypto";
+import { QueryIterator } from './QueryIterator';
 
 // export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
@@ -62,8 +63,7 @@ export class HighloadWalletV3 implements Contract {
         provider: ContractProvider,
         secretKey: Buffer,
         opts: {
-            shift: number,
-            bitNumber: number,
+            query_id: number | QueryIterator,
             createdAt: number,
             subwalletId: number,
             actions: OutAction[] | Cell
@@ -78,8 +78,7 @@ export class HighloadWalletV3 implements Contract {
             actionsCell = actionsBuilder.endCell();
         }
         const messageInner = beginCell()
-                            .storeUint(opts.shift, 14)
-                            .storeUint(opts.bitNumber, 10)
+                            .storeUint(Number(opts.query_id), 24)
                             .storeUint(opts.createdAt, 40)
                             .storeUint(opts.subwalletId, 32)
                             .storeRef(actionsCell)
@@ -115,8 +114,8 @@ export class HighloadWalletV3 implements Contract {
         return res.readNumber();
     }
 
-    async getProcessed(provider: ContractProvider, queryId: number): Promise<boolean> {
-        const res = (await provider.get('processed?', [{'type': 'int', 'value': BigInt(queryId)}])).stack;
+    async getProcessed(provider: ContractProvider, queryId: number | QueryIterator): Promise<boolean> {
+        const res = (await provider.get('processed?', [{'type': 'int', 'value': BigInt(Number(queryId))}])).stack;
         return res.readBoolean();
     }
 }
