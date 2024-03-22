@@ -348,8 +348,10 @@ describe('HighloadWalletV3S', () => {
             success: true
         });
 
-        blockchain.now = 1000 + 260;
         expect(await highloadWalletV3S.getProcessed(queryId)).toBe(true);
+        blockchain.now = 1000 + 260;
+        // get_is_processed should account for query expiery
+        expect(await highloadWalletV3S.getProcessed(queryId)).toBe(false);
 
         const newShift   = getRandomInt(0, 16383);
         const newBitNum  = getRandomInt(0, 1022);

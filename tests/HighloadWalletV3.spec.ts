@@ -291,6 +291,8 @@ describe('HighloadWalletV3', () => {
 
         expect(await highloadWalletV3.getProcessed(Number(rndQuery))).toBe(true);
         blockchain.now = 1000 + 260;
+        // is_processed should account for query expiery
+        expect(await highloadWalletV3.getProcessed(Number(rndQuery))).toBe(false);
 
 
         do {
