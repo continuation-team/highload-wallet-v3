@@ -683,6 +683,76 @@ describe('HighloadWalletV3S', () => {
             queryIter.next();
         }
     });
+    it('timeout replay attack', async () => {
+        /*
+         * Timeout is not part of the external
+         * So in theory one could deploy contract with
+         * different timeout without thinking too much.
+         * This opens up avenue for replay attack.
+         * So, at every deploy one should always change key or subwallet id
+        */
+        const deployer  = await blockchain.treasury('new_deployer');
+        const attacker  = await blockchain.treasury('attacker');
+
+        // Same contract different timeout
+        const newWallet = blockchain.openContract(
+            HighloadWalletV3S.createFromConfig(
+                {
+                    publicKey: keyPair.publicKey,
+                    subwalletId: SUBWALLET_ID,
+                    timeout: 1234,
+                },
+                code
+            )
+        );
+
+        let res = await newWallet.sendDeploy(deployer.getSender(), toNano('1000'));
+        expect(res.transactions).toHaveTransaction({
+            on: newWallet.address,
+            deploy: true,
+            success: true
+        });
+
+        // So attacker requested legit withdraw on the exchange
+        const legitResp = await highloadWalletV3S.sendExternalMessage(keyPair.secretKey, {
+            createdAt: 1000,
+            query_id: 0,
+            mode: SendMode.PAY_GAS_SEPARATELY,
+            subwalletId: SUBWALLET_ID,
+            message: internal_relaxed({
+                to: attacker.address,
+                value: toNano('10')
+            })
+        });
+
+        const legitTx = findTransactionRequired(legitResp.transactions, {
+            on: highloadWalletV3S.address,
+            outMessagesCount: 1
+        });
+
+        expect(legitResp.transactions).toHaveTransaction({
+            on: attacker.address,
+            value: toNano('10')
+        });
+
+        // And now can replay it on contract with different timeout
+        const replyExt = legitTx.inMessage!;
+        if(replyExt.info.type !== 'external-in') {
+            throw TypeError("No way");
+        }
+        // Replace dest
+        replyExt.info = {
+            ...replyExt.info,
+            dest: newWallet.address
+        };
+        const reply = await blockchain.sendMessage(replyExt);
+
+        expect(reply.transactions).not.toHaveTransaction({
+            from: newWallet.address,
+            on: attacker.address,
+            value: toNano('10')
+        });
+    });
     it('should work replay protection, but dont send message', async () => {
         const testResult = await highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
