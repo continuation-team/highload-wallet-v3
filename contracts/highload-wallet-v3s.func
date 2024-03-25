@@ -50,6 +50,7 @@ const int op::internal_transfer = 0xae42e5a4;
     in_msg_body~skip_bits(64);
     cell actions = in_msg_body.preload_ref();
     set_actions(actions);
+    set_code(my_code());
     return ();
   }
 }
