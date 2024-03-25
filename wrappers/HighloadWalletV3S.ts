@@ -127,6 +127,9 @@ export class HighloadWalletV3S implements Contract {
         if (opts.actions instanceof Cell) {
             actionsCell = opts.actions;
         } else {
+            if(opts.actions.length > 254) {
+                throw TypeError("Max allowed action count is 254. Use packActions instead.");
+            }
             const actionsBuilder = beginCell();
             storeOutList(opts.actions)(actionsBuilder);
             actionsCell = actionsBuilder.endCell();
@@ -160,12 +163,12 @@ export class HighloadWalletV3S implements Contract {
     }
     packActions(messages: OutAction[], value: bigint = toNano('1'), query_id: QueryIterator) {
         let batch: OutAction[];
-        if(messages.length > 255) {
-            batch = messages.slice(0, 254);
+        if(messages.length > 254) {
+            batch = messages.slice(0, 253);
             batch.push({
                 type: 'sendMsg',
                 mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
-                outMsg: this.packActions(messages.slice(254), value, QueryIterator.fromQueryId(query_id.peekNext()))
+                outMsg: this.packActions(messages.slice(253), value, query_id)
             });
         }
         else {

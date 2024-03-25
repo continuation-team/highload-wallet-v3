@@ -559,11 +559,11 @@ describe('HighloadWalletV3S', () => {
         const processed = await highloadWalletV3S.getProcessed(queryId);
         expect(processed).toBe(true);
     });
-    it('should handle 255 actions in one go', async () => {
+    it('should handle 254 actions in one go', async () => {
         const curQuery = new QueryIterator();
-        let outMsgs: OutActionSendMsg[] = new Array(255);
+        let outMsgs: OutActionSendMsg[] = new Array(254);
 
-        for(let i = 0; i < 255; i++) {
+        for(let i = 0; i < 254; i++) {
             outMsgs[i] = {
                 type: 'sendMsg',
                 mode: SendMode.NONE,
@@ -579,9 +579,9 @@ describe('HighloadWalletV3S', () => {
 
         expect(res.transactions).toHaveTransaction({
             on: highloadWalletV3S.address,
-            outMessagesCount: 255
+            outMessagesCount: 254
         });
-        for(let i = 0; i < 255; i++) {
+        for(let i = 0; i < 254; i++) {
             expect(res.transactions).toHaveTransaction({
                 from: highloadWalletV3S.address,
                 body: outMsgs[i].outMsg.body
@@ -610,11 +610,11 @@ describe('HighloadWalletV3S', () => {
 
         expect(res.transactions).toHaveTransaction({
             on: highloadWalletV3S.address,
-            outMessagesCount: 255
+            outMessagesCount: 254
         });
         expect(res.transactions).toHaveTransaction({
             on: highloadWalletV3S.address,
-            outMessagesCount: msgCount - 254
+            outMessagesCount: msgCount - 253
         });
         for(let i = 0; i < msgCount; i++) {
             expect(res.transactions).toHaveTransaction({
