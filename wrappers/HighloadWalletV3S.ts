@@ -143,7 +143,6 @@ export class HighloadWalletV3S implements Contract {
         queryId: number | QueryIterator,
         value: bigint
     }) {
-        let actionsCell: Cell;
 
         return internal_relaxed({
             to: this.address,
