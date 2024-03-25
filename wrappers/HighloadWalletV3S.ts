@@ -5,16 +5,22 @@ import {
     Contract,
     contractAddress,
     ContractProvider, Message,
+    MessageRelaxed,
     OutAction,
     Sender,
     SendMode, storeMessage,
-    storeOutList
+    storeMessageRelaxed,
+    storeOutList,
+    toNano,
+    internal as internal_relaxed,
+    OutActionSendMsg
 } from '@ton/core';
-import { hex as CodeHex } from '../build/HighloadWalletV3S.compiled.json';
+// import { hex as CodeHex } from '../build/HighloadWalletV3S.compiled.json';
 import { sign } from "ton-crypto";
 import {OP} from "../tests/imports/const";
+import { QueryIterator, maxQueryId } from "./QueryIterator";
 
-export const HighloadWalletV3SCode = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
+// export const HighloadWalletV3SCode = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
 export type HighloadWalletV3SConfig = {
     publicKey: Buffer,
@@ -32,8 +38,8 @@ export function highloadWalletV3SConfigToCell(config: HighloadWalletV3SConfig): 
           .endCell();
 }
 
-
 export class HighloadWalletV3S implements Contract {
+
     constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
 
 
@@ -42,9 +48,9 @@ export class HighloadWalletV3S implements Contract {
     }
 
 
-    static createFromConfig(config: HighloadWalletV3SConfig, workchain = 0) {
+    static createFromConfig(config: HighloadWalletV3SConfig, code: Cell, workchain = 0) {
         const data = highloadWalletV3SConfigToCell(config);
-        const init = { code: HighloadWalletV3SCode, data };
+        const init = { code, data };
         return new HighloadWalletV3S(contractAddress(workchain, init), init);
     }
 
@@ -63,27 +69,29 @@ export class HighloadWalletV3S implements Contract {
         provider: ContractProvider,
         secretKey: Buffer,
         opts: {
-            message: Message | Cell,
-            mode: number
-            shift: number,
-            bitNumber: number,
+            message: MessageRelaxed | Cell,
+            mode: number,
+            query_id: number | QueryIterator,
             createdAt: number,
             subwalletId: number,
         }
     ){
         let messageCell: Cell;
+
+        if(Number(opts.query_id) > maxQueryId) {
+            throw new TypeError(`Max query id: ${maxQueryId} < ${opts.query_id}`);
+        }
         if (opts.message instanceof Cell) {
             messageCell = opts.message
         } else {
             const messageBuilder = beginCell();
-            messageBuilder.store(storeMessage(opts.message))
+            messageBuilder.store(storeMessageRelaxed(opts.message))
             messageCell = messageBuilder.endCell();
         }
         const messageInner = beginCell()
                             .storeRef(messageCell)
                             .storeUint(opts.mode, 8)
-                            .storeUint(opts.shift, 14)
-                            .storeUint(opts.bitNumber, 10)
+                            .storeUint(Number(opts.query_id), 24)
                             .storeUint(opts.createdAt, 40)
                             .storeUint(opts.subwalletId, 32)
                             .endCell();
@@ -95,11 +103,25 @@ export class HighloadWalletV3S implements Contract {
            .endCell()
         );
     }
+    async sendBatch (provider: ContractProvider, secretKey: Buffer, messages: OutActionSendMsg[], subwallet: number, query_id: QueryIterator, createdAt?: number, value: bigint = 0n) {
+        if(createdAt == undefined) {
+            createdAt = Math.floor(Date.now() / 1000);
+        }
+        if(Number(query_id) > maxQueryId) {
+            throw new TypeError(`Max query id: ${maxQueryId} < ${query_id}`);
+        }
+        return await this.sendExternalMessage(provider, secretKey, {
+            message: this.packActions(messages, value, query_id),
+            mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
+            query_id: query_id,
+            createdAt: createdAt,
+            subwalletId: subwallet
+        });
+    }
 
-    createInternalTransfer(opts: {
-        actions:  OutAction[] | Cell
-        queryId: number,
-        value: bigint
+    static createInternalTransferBody(opts: {
+        actions: OutAction[] | Cell,
+        queryId: number | QueryIterator,
     }) {
         let actionsCell: Cell;
         if (opts.actions instanceof Cell) {
@@ -109,19 +131,52 @@ export class HighloadWalletV3S implements Contract {
             storeOutList(opts.actions)(actionsBuilder);
             actionsCell = actionsBuilder.endCell();
         }
-        const body = beginCell()
-            .storeUint(OP.InternalTransfer, 32)
-            .storeUint(opts.queryId, 64)
-            .storeRef(actionsCell)
-            .endCell();
+        return beginCell().storeUint(OP.InternalTransfer, 32)
+                          .storeUint(Number(opts.queryId), 64)
+                          .storeRef(actionsCell)
+                          .endCell();
 
-        return beginCell()
+
+    }
+    createInternalTransfer(opts: {
+        actions:  OutAction[] | Cell
+        queryId: number | QueryIterator,
+        value: bigint
+    }) {
+        let actionsCell: Cell;
+
+        return internal_relaxed({
+            to: this.address,
+            value: opts.value,
+            body: HighloadWalletV3S.createInternalTransferBody(opts)
+        });
+        /*beginCell()
             .storeUint(0x10, 6)
             .storeAddress(this.address)
             .storeCoins(opts.value)
             .storeUint(0, 107)
             .storeSlice(body.asSlice())
             .endCell();
+            */
+    }
+    packActions(messages: OutAction[], value: bigint = toNano('1'), query_id: QueryIterator) {
+        let batch: OutAction[];
+        if(messages.length > 255) {
+            batch = messages.slice(0, 254);
+            batch.push({
+                type: 'sendMsg',
+                mode: value > 0n ? SendMode.PAY_GAS_SEPARATELY : SendMode.CARRY_ALL_REMAINING_BALANCE,
+                outMsg: this.packActions(messages.slice(254), value, QueryIterator.fromQueryId(query_id.peekNext()))
+            });
+        }
+        else {
+            batch = messages;
+        }
+        return this.createInternalTransfer({
+            actions: batch,
+            queryId: query_id,
+            value
+        });
     }
 
 
@@ -132,7 +187,7 @@ export class HighloadWalletV3S implements Contract {
     }
 
     async getSubwalletId(provider: ContractProvider): Promise<number> {
-        const res = (await provider.get('get_public_key', [])).stack;
+        const res = (await provider.get('get_subwallet_id', [])).stack;
         return res.readNumber();
     }
 
@@ -146,8 +201,8 @@ export class HighloadWalletV3S implements Contract {
         return res.readNumber();
     }
 
-    async isProcessed(provider: ContractProvider, queryId: number): Promise<boolean> {
-        const res = (await provider.get('processed?', [])).stack;
+    async getProcessed(provider: ContractProvider, queryId: number | QueryIterator): Promise<boolean> {
+        const res = (await provider.get('processed?', [{'type': 'int', 'value': BigInt(Number(queryId))}])).stack;
         return res.readBoolean();
     }
 }

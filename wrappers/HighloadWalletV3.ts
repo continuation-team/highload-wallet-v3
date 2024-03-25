@@ -10,10 +10,11 @@ import {
     SendMode,
     storeOutList
 } from '@ton/core';
-import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
+// import { hex as CodeHex } from '../build/HighloadWalletV3.compiled.json';
 import { sign } from "ton-crypto";
+import { QueryIterator } from './QueryIterator';
 
-export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
+// export const HighloadWalletV3Code = Cell.fromBoc(Buffer.from(CodeHex, "hex"))[0]
 
 export type HighloadWalletV3Config = {
     publicKey: Buffer,
@@ -41,9 +42,9 @@ export class HighloadWalletV3 implements Contract {
     }
 
 
-    static createFromConfig(config: HighloadWalletV3Config, workchain = 0) {
+    static createFromConfig(config: HighloadWalletV3Config, code: Cell, workchain = 0) {
         const data = highloadWalletV3ConfigToCell(config);
-        const init = { code: HighloadWalletV3Code, data };
+        const init = { code, data };
         return new HighloadWalletV3(contractAddress(workchain, init), init);
     }
 
@@ -62,8 +63,7 @@ export class HighloadWalletV3 implements Contract {
         provider: ContractProvider,
         secretKey: Buffer,
         opts: {
-            shift: number,
-            bitNumber: number,
+            query_id: number | QueryIterator,
             createdAt: number,
             subwalletId: number,
             actions: OutAction[] | Cell
@@ -78,8 +78,7 @@ export class HighloadWalletV3 implements Contract {
             actionsCell = actionsBuilder.endCell();
         }
         const messageInner = beginCell()
-                            .storeUint(opts.shift, 14)
-                            .storeUint(opts.bitNumber, 10)
+                            .storeUint(Number(opts.query_id), 24)
                             .storeUint(opts.createdAt, 40)
                             .storeUint(opts.subwalletId, 32)
                             .storeRef(actionsCell)
@@ -101,7 +100,7 @@ export class HighloadWalletV3 implements Contract {
     }
 
     async getSubwalletId(provider: ContractProvider): Promise<number> {
-        const res = (await provider.get('get_public_key', [])).stack;
+        const res = (await provider.get('get_subwallet_id', [])).stack;
         return res.readNumber();
     }
 
@@ -115,8 +114,8 @@ export class HighloadWalletV3 implements Contract {
         return res.readNumber();
     }
 
-    async isProcessed(provider: ContractProvider, queryId: number): Promise<boolean> {
-        const res = (await provider.get('processed?', [])).stack;
+    async getProcessed(provider: ContractProvider, queryId: number | QueryIterator): Promise<boolean> {
+        const res = (await provider.get('processed?', [{'type': 'int', 'value': BigInt(Number(queryId))}])).stack;
         return res.readBoolean();
     }
 }
