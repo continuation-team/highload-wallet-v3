@@ -21,6 +21,7 @@ describe('HighloadWalletV3S', () => {
 
     let shouldRejectWith: (p: Promise<unknown>, code: number) => Promise<void>;
     let getContractData: (address: Address) => Promise<Cell>;
+    let getContractCode: (address: Address) => Promise<Cell>;
 
     beforeAll(async () => {
         keyPair = keyPairFromSeed(await getSecureRandomBytes(32));
@@ -50,6 +51,17 @@ describe('HighloadWalletV3S', () => {
             throw("Data is not present");
           return smc.account.account.storage.state.state.data
         }
+        getContractCode = async (address: Address) => {
+          const smc = await blockchain.getContract(address);
+          if(!smc.account.account)
+            throw("Account not found")
+          if(smc.account.account.storage.state.type != "active" )
+            throw("Atempting to get code on inactive account");
+          if(!smc.account.account.storage.state.state.code)
+            throw("Code is not present");
+          return smc.account.account.storage.state.state.code;
+        }
+
     });
 
     beforeEach(async () => {
@@ -452,6 +464,54 @@ describe('HighloadWalletV3S', () => {
             from: highloadWalletV3S.address,
             value: toNano('123'),
             body: testBody
+        });
+    });
+    it('should ignore set_code action', async () => {
+        const mockCode   = beginCell().storeUint(getRandomInt(0, 1000000), 32).endCell();
+        const testBody   = beginCell().storeUint(getRandomInt(0, 1000000), 32).endCell();
+        const testAddr   = randomAddress();
+
+        const rndShift   = getRandomInt(0, 16383);
+        const rndBitNum  = getRandomInt(0, 1022);
+
+        const queryId = (rndShift << 10) + rndBitNum;
+
+        // In case test suite is broken
+        expect(await getContractCode(highloadWalletV3S.address)).toEqualCell(code);
+        const message = highloadWalletV3S.createInternalTransfer({
+            actions: [{
+                type: 'setCode',
+                newCode: mockCode
+            },
+            {
+                type: 'sendMsg',
+                mode: SendMode.PAY_GAS_SEPARATELY,
+                outMsg: internal_relaxed({
+                    to: testAddr,
+                    value: toNano('0.1'),
+                    body: testBody
+                })
+            }],
+            queryId: 123,
+            value: 0n
+        });
+
+        const res = await highloadWalletV3S.sendExternalMessage(keyPair.secretKey, {
+            createdAt: 1000,
+            query_id: queryId,
+            message,
+            mode: 128,
+            subwalletId: SUBWALLET_ID
+        });
+
+        // Code should not change
+        expect(await getContractCode(highloadWalletV3S.address)).toEqualCell(code);
+        // Rest of the action pack should execute
+        expect(res.transactions).toHaveTransaction({
+            from: highloadWalletV3S.address,
+            to: testAddr,
+            body: testBody,
+            value: toNano('0.1')
         });
     });
     it('should send external message', async () => {
