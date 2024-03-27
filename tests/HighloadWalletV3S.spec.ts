@@ -389,7 +389,7 @@ describe('HighloadWalletV3S', () => {
         expect(await highloadWalletV3S.getProcessed(newQueryId)).toBe(true);
         expect(await highloadWalletV3S.getLastCleaned()).toEqual(testResult2.transactions[0].now);
     });
-    it('queries dictionary with max keys should fit in credit limit', async () => {
+    it.only('queries dictionary with max keys should fit in credit limit', async () => {
         // 2 ** 14 - 1 = 16383 keys
         // Artificial situation where both dict's get looked up
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
@@ -402,6 +402,7 @@ describe('HighloadWalletV3S', () => {
             mockQueries.set(i, beginCell().storeUint(16384 + i, 15).storeBits(padding.substring(1,padding.length - 1)).endCell());
         }
 
+        /*
         const newCell  = beginCell().storeDict(newQueries).endCell();
         const mockCell = beginCell().storeDict(mockQueries).endCell();
         const visited: string[]  = [];
@@ -410,6 +411,7 @@ describe('HighloadWalletV3S', () => {
         console.log("First dict stats:", totalStats);
         totalStats = totalStats.add(collectCellStats(mockCell, visited, false));
         console.log("Total storage stats:", totalStats);
+        */
 
         const smc = await blockchain.getContract(highloadWalletV3S.address);
         const walletState = await getContractData(highloadWalletV3S.address);
@@ -437,7 +439,7 @@ describe('HighloadWalletV3S', () => {
         const rndBitNum  = getRandomInt(0, 1022);
 
         const queryId = (rndShift << 10) + rndBitNum;
-        await expect(highloadWalletV3S.sendExternalMessage(
+        let res = highloadWalletV3S.sendExternalMessage(
             keyPair.secretKey,
             {
                 createdAt: 1000,
@@ -445,9 +447,14 @@ describe('HighloadWalletV3S', () => {
                 message,
                 mode: 128,
                 subwalletId: SUBWALLET_ID
-            })).resolves.not.toThrow();
-
-        console.log("Account storage stats:", smc.account.account?.storageStats.used);
+            }
+        );
+        await expect(res).resolves.not.toThrow();
+        expect((await res).transactions).toHaveTransaction({
+            on: highloadWalletV3S.address,
+            aborted: false,
+            outMessagesCount: 1
+        });
     });
     it('should send internal message', async () => {
         const testAddr   = randomAddress(0);
