@@ -446,6 +446,8 @@ describe('HighloadWalletV3S', () => {
                 mode: 128,
                 subwalletId: SUBWALLET_ID
             })).resolves.not.toThrow();
+
+        console.log("Account storage stats:", smc.account.account?.storageStats.used);
     });
     it('should send internal message', async () => {
         const testAddr   = randomAddress(0);
