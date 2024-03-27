@@ -6,7 +6,7 @@ import { getSecureRandomBytes, KeyPair, keyPairFromSeed } from "ton-crypto";
 import { randomBytes } from "crypto";
 import {SUBWALLET_ID, Errors} from "./imports/const";
 import { compile } from '@ton/blueprint';
-import { getRandomInt } from '../utils';
+import { collectCellStats, getRandomInt } from '../utils';
 import { findTransactionRequired, randomAddress } from '@ton/test-utils';
 import { QueryIterator, maxQueryId } from '../wrappers/QueryIterator';
 import { MsgGenerator } from '../wrappers/MsgGenerator';
@@ -394,11 +394,22 @@ describe('HighloadWalletV3S', () => {
         // Artificial situation where both dict's get looked up
         const message = highloadWalletV3S.createInternalTransfer({actions: [], queryId: 0, value: 0n})
         const newQueries = Dictionary.empty(Dictionary.Keys.Uint(14), Dictionary.Values.Cell());
+        const mockQueries = Dictionary.empty(Dictionary.Keys.Uint(14), Dictionary.Values.Cell());
         const padding = new BitString(Buffer.alloc(128, 0), 0, 1023 - 14);
 
         for(let i = 0; i < 16383; i++) {
             newQueries.set(i, beginCell().storeUint(i, 14).storeBits(padding).endCell());
+            mockQueries.set(i, beginCell().storeUint(16384 + i, 15).storeBits(padding.substring(1,padding.length - 1)).endCell());
         }
+
+        const newCell  = beginCell().storeDict(newQueries).endCell();
+        const mockCell = beginCell().storeDict(mockQueries).endCell();
+        const visited: string[]  = [];
+
+        let totalStats = collectCellStats(newCell, visited, false);
+        console.log("First dict stats:", totalStats);
+        totalStats = totalStats.add(collectCellStats(mockCell, visited, false));
+        console.log("Total storage stats:", totalStats);
 
         const smc = await blockchain.getContract(highloadWalletV3S.address);
         const walletState = await getContractData(highloadWalletV3S.address);
@@ -408,7 +419,7 @@ describe('HighloadWalletV3S', () => {
 
         const newState = beginCell()
                           .storeBits(head)
-                          .storeDict(null)
+                          .storeDict(mockQueries)
                           .storeDict(newQueries)
                           .storeUint(2000, 40) // Make sure both dicts pass last_cleaned check
                           .storeBits(tail)
@@ -590,7 +601,7 @@ describe('HighloadWalletV3S', () => {
         expect(await highloadWalletV3S.getProcessed(Number(curQuery))).toBe(true);
     });
     it('should be able to go beyond 255 messages with chained internal_transfer', async () => {
-        const msgCount  = getRandomInt(256, 512);
+        const msgCount = getRandomInt(256, 500);
         const msgs : OutActionSendMsg[] = new Array(msgCount);
         const curQuery = new QueryIterator();
 
